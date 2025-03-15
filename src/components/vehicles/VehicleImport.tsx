@@ -137,11 +137,24 @@ export const VehicleImport: React.FC<VehicleImportProps> = ({ onImport, onCancel
 
   const normalizeVehicleType = (type: string): VehicleType => {
     type = type.trim().toUpperCase();
-    if (type.includes('DAMPERLİ KAMYON')) return 'Kamyon';
-    if (type.includes('CARGO')) return 'Kamyon';
-    if (type.includes('AXOR')) return 'Çekici';
-    if (type.includes('DODGE')) return 'Kamyon';
-    return 'Kamyon'; // Varsayılan tip
+    if (type.includes('DAMPERLİ') || type.includes('DAMPER')) return 'Damperli Kamyon';
+    if (type.includes('MİKSER') || type.includes('MIXER')) return 'Beton Mikseri';
+    if (type.includes('POMPA')) return 'Beton Pompası';
+    if (type.includes('ÇEKİCİ') || type.includes('CEKICI')) return 'Çekici Kamyon';
+    if (type.includes('RÖMORK') && type.includes('DAMPER')) return 'Römork Damperli';
+    if (type.includes('LOWBED')) return 'Yarı Römork Lowbed';
+    if (type.includes('SİLOBAS') || type.includes('SILOBAS')) return 'Silobas';
+    if (type.includes('TANKER')) return 'Su Tankeri';
+    if (type.includes('EKSKAVATÖR') || type.includes('EXCAVATOR')) return 'Ekskavatör Paletli';
+    if (type.includes('DELICI')) return 'Kaya Delici Paletli';
+    if (type.includes('YÜKLEYİCİ') || type.includes('LOADER')) return 'Yükleyici Lastikli';
+    if (type.includes('TRAKTÖR') || type.includes('TRAKTOR')) return 'Traktör';
+    if (type.includes('FORKLİFT') || type.includes('FORKLIFT')) return 'Forklift';
+    if (type.includes('PİKAP') || type.includes('PICKUP')) return 'Kamyonet Pikap';
+    if (type.includes('VAN')) return 'Kamyonet (BB Van)';
+    if (type.includes('MİNİBÜS') || type.includes('MINIBUS')) return 'Minibüs';
+    if (type.includes('MOTOSİKLET') || type.includes('MOTOR')) return 'Motosiklet';
+    return 'Damperli Kamyon'; // Varsayılan tip
   };
 
   const handleFileRead = async (file: File) => {

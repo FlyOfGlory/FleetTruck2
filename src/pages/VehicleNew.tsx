@@ -11,7 +11,7 @@ export const VehicleNew: React.FC = () => {
     plate: '',
     brand: '',
     model: '',
-    type: 'Çekici' as VehicleType,
+    type: 'Damperli Kamyon' as VehicleType,
     year: new Date().getFullYear(),
     mileage: 0,
     chassisNumber: '',
@@ -119,8 +119,27 @@ export const VehicleNew: React.FC = () => {
               required
               className="w-full px-3 py-2 bg-[#22272E] border border-gray-700 rounded-lg text-white focus:outline-none focus:ring-2 focus:ring-blue-500"
             >
-              <option value="Çekici">Çekici</option>
-              <option value="Kamyon">Kamyon</option>
+              <option value="Damperli Kamyon">Damperli Kamyon</option>
+              <option value="Beton Mikseri">Beton Mikseri</option>
+              <option value="Beton Pompası">Beton Pompası</option>
+              <option value="Çekici Kamyon">Çekici Kamyon</option>
+              <option value="Römork Damperli">Römork Damperli</option>
+              <option value="Yarı Römork Damperli">Yarı Römork Damperli</option>
+              <option value="Yarı Römork Lowbed">Yarı Römork Lowbed</option>
+              <option value="Silobas">Silobas</option>
+              <option value="Su Tankeri">Su Tankeri</option>
+              <option value="Ekskavatör Paletli">Ekskavatör Paletli</option>
+              <option value="Kaya Delici Paletli">Kaya Delici Paletli</option>
+              <option value="Yükleyici Lastikli">Yükleyici Lastikli</option>
+              <option value="Traktör">Traktör</option>
+              <option value="Forklift">Forklift</option>
+              <option value="Kamyonet Pikap">Kamyonet Pikap</option>
+              <option value="Kamyonet">Kamyonet</option>
+              <option value="Kamyonet (BB Van)">Kamyonet (BB Van)</option>
+              <option value="Minibüs">Minibüs</option>
+              <option value="Otomobil">Otomobil</option>
+              <option value="Otomobil (AF Çok Amaçlı)">Otomobil (AF Çok Amaçlı)</option>
+              <option value="Motosiklet">Motosiklet</option>
             </select>
           </div>
 

@@ -21,6 +21,11 @@ import { Repair } from './pages/Repair';
 import { Scrap } from './pages/Scrap';
 import { Sold } from './pages/Sold';
 import { VehicleNew } from './pages/VehicleNew';
+import { ExcelUpload } from "./pages/ExcelUpload";
+import { AuthProvider } from './contexts/AuthContext';
+import { ToastContainer } from 'react-toastify';
+import 'react-toastify/dist/ReactToastify.css';
+import { VehicleTiresPage } from './pages/VehicleTiresPage';
 
 const CURRENT_USER_KEY = 'fleet-management-current-user';
 const USERS_STORAGE_KEY = 'fleet-management-users';
@@ -143,48 +148,73 @@ const App: React.FC = () => {
   if (!currentUser) {
     return (
       <ThemeProvider>
-        <Login onLogin={handleLogin} />
+        <AuthProvider>
+          <Login onLogin={handleLogin} />
+        </AuthProvider>
       </ThemeProvider>
     );
   }
 
   return (
     <ThemeProvider>
-      <Router>
-        <Layout currentUser={currentUser} onLogout={handleLogout}>
-          <div className="min-h-screen bg-[#22272E]">
-            <Sidebar />
-            <Header currentUser={currentUser} onLogout={handleLogout} />
-            <div className="ml-64 pt-16 p-6">
-              <Routes>
-                <Route path="/" element={<Dashboard />} />
-                <Route path="vehicles" element={<Vehicles />} />
-                <Route path="vehicles/new" element={<VehicleNew />} />
-                <Route path="vehicles/:id" element={<VehicleEdit />} />
-                <Route path="tires" element={<Tires />} />
-                <Route path="maintenance" element={<Maintenance />} />
-                <Route path="inspections" element={<Inspections />} />
-                <Route path="reports" element={<Reports />} />
-                <Route path="calendar" element={<Calendar />} />
-                <Route path="coating" element={<Coating />} />
-                <Route path="external" element={<External />} />
-                <Route path="repair" element={<Repair />} />
-                <Route path="scrap" element={<Scrap />} />
-                <Route path="sold" element={<Sold />} />
-                <Route 
-                  path="users" 
-                  element={
-                    currentUser.role === 'admin' 
-                      ? <Users /> 
-                      : <Navigate to="/" replace />
-                  } 
-                />
-                <Route path="*" element={<Navigate to="/" replace />} />
-              </Routes>
+      <AuthProvider>
+        <Router>
+          <Layout currentUser={currentUser} onLogout={handleLogout}>
+            <div className="min-h-screen bg-[#22272E]">
+              <Sidebar />
+              <Header currentUser={currentUser} onLogout={handleLogout} />
+              <div className="ml-64 pt-16 p-6">
+                <Routes>
+                  <Route path="/" element={<Dashboard />} />
+                  <Route path="vehicles" element={<Vehicles />} />
+                  <Route path="vehicles/new" element={<VehicleNew />} />
+                  <Route path="vehicles/:id" element={<VehicleEdit />} />
+                  <Route path="vehicles/:id/tires" element={<VehicleTiresPage />} />
+                  <Route path="tires" element={<Tires />} />
+                  <Route path="maintenance" element={<Maintenance />} />
+                  <Route path="inspections" element={<Inspections />} />
+                  <Route path="reports" element={<Reports />} />
+                  <Route path="calendar" element={<Calendar />} />
+                  <Route path="coating" element={<Coating />} />
+                  <Route path="external" element={<External />} />
+                  <Route path="repair" element={<Repair />} />
+                  <Route path="scrap" element={<Scrap />} />
+                  <Route path="sold" element={<Sold />} />
+                  <Route 
+                    path="users" 
+                    element={
+                      currentUser.role === 'admin' 
+                        ? <Users /> 
+                        : <Navigate to="/" replace />
+                    } 
+                  />
+                  <Route 
+                    path="excel-upload" 
+                    element={
+                      currentUser.role === 'admin' 
+                        ? <ExcelUpload /> 
+                        : <Navigate to="/" replace />
+                    } 
+                  />
+                  <Route path="*" element={<Navigate to="/" replace />} />
+                </Routes>
+              </div>
             </div>
-          </div>
-        </Layout>
-      </Router>
+            <ToastContainer
+              position="top-right"
+              autoClose={5000}
+              hideProgressBar={false}
+              newestOnTop
+              closeOnClick
+              rtl={false}
+              pauseOnFocusLoss
+              draggable
+              pauseOnHover
+              theme="light"
+            />
+          </Layout>
+        </Router>
+      </AuthProvider>
     </ThemeProvider>
   );
 };
