@@ -7,8 +7,8 @@
 /coverage
 
 # Production
-/dist
 /build
+/dist
 
 # Misc
 .DS_Store
@@ -32,3 +32,6 @@ yarn-error.log*
 *.njsproj
 *.sln
 *.sw?
+
+# TypeScript
+*.tsbuildinfo

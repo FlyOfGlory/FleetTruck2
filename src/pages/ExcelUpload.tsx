@@ -1,475 +1,528 @@
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useCallback } from 'react';
 import * as XLSX from 'xlsx';
 import { Vehicle } from '../types/Vehicle';
 import { toast } from 'react-toastify';
 import { ExcelUploadHistory } from '../types/ExcelUpload';
 import { v4 as uuidv4 } from 'uuid';
-import { Trash2, ChevronDown, ChevronRight, Calendar } from 'lucide-react';
+import { Trash2, ChevronDown, ChevronRight, Upload, Calendar } from 'lucide-react';
+import { useAuth } from '../contexts/AuthContext';
+import { auditLogService } from '../services/auditLogService';
+import { format, isValid, parseISO } from 'date-fns';
+import { tr } from 'date-fns/locale';
 
-interface VehicleData {
-  kayitNo: string;
-  cihazNo: string;
-  plaka: string;
-  surucu: string;
-  ilkMesafe: number;
-  ilkMesafeTarih: string;
-  sonMesafe: number;
-  sonMesafeTarih: string;
-  toplamMesafe: number;
+interface RawExcelData {
+  "Plaka "?: string;
+  "İlk Mesafe Sayacı Değeri (km)"?: string;
+  "İlk Mesafe Sayacı Değeri Tarihi "?: string;
+  "Son Mesafe Sayacı Değeri (km)"?: string;
+  "Son Mesafe Sayacı Değeri Tarihi "?: string;
+  "Toplam Mesafe (km)"?: string;
 }
+
+interface ExcelData {
+  Plaka: string;
+  Kilometre: number;
+  Tarih: string;
+}
+
+interface UploadRecord {
+  id: string;
+  date: string;
+  fileName: string;
+  recordCount: number;
+  updatedCount: number;
+  unmatchedCount: number;
+  data: ExcelData[];
+}
+
+const VEHICLES_STORAGE_KEY = 'fleet-management-vehicles';
+const UPLOAD_HISTORY_KEY = 'excel-upload-history';
+const fileTypes = ['.xlsx', '.xls'];
 
 export const ExcelUpload: React.FC = () => {
   const [loading, setLoading] = useState(false);
-  const [uploadHistory, setUploadHistory] = useState<ExcelUploadHistory[]>([]);
-  const [selectedUpload, setSelectedUpload] = useState<ExcelUploadHistory | null>(null);
-  const [previewData, setPreviewData] = useState<VehicleData[] | null>(null);
-  const [selectedMonth, setSelectedMonth] = useState<number>(new Date().getMonth());
-  const [selectedYear, setSelectedYear] = useState<number>(new Date().getFullYear());
-  const [expandedWeeks, setExpandedWeeks] = useState<Set<string>>(new Set());
+  const [uploadHistory, setUploadHistory] = useState<UploadRecord[]>([]);
+  const [selectedUpload, setSelectedUpload] = useState<UploadRecord | null>(null);
+  const [vehicles, setVehicles] = useState<Vehicle[]>([]);
+  const [unmatchedPlates, setUnmatchedPlates] = useState<string[]>([]);
+  const [dragActive, setDragActive] = useState(false);
+  const [previewData, setPreviewData] = useState<ExcelData[]>([]);
+  const { currentUser } = useAuth();
 
   useEffect(() => {
-    const savedHistory = localStorage.getItem('excel-upload-history');
+    const savedVehicles = localStorage.getItem(VEHICLES_STORAGE_KEY);
+    if (savedVehicles) {
+      setVehicles(JSON.parse(savedVehicles));
+    }
+
+    const savedHistory = localStorage.getItem(UPLOAD_HISTORY_KEY);
     if (savedHistory) {
       setUploadHistory(JSON.parse(savedHistory));
     }
   }, []);
 
-  const processExcelData = (data: VehicleData[], fileName: string) => {
-    const vehicles = JSON.parse(localStorage.getItem('vehicles') || '[]');
-    const updatedVehicles = [...vehicles];
-    let updatedCount = 0;
-    let warningCount = 0;
-
-    // Verileri işle
-    data.forEach((vehicleData) => {
-      if (vehicleData.plaka || vehicleData.cihazNo) {
-        const vehicleIndex = updatedVehicles.findIndex(
-          (v: Vehicle) => v.plate === vehicleData.plaka
-        );
-
-        if (vehicleIndex !== -1) {
-          const vehicle = updatedVehicles[vehicleIndex];
-          if (vehicleData.toplamMesafe > vehicle.mileage) {
-            vehicle.mileage = vehicleData.toplamMesafe;
-            updatedCount++;
-            
-            if (vehicleData.toplamMesafe - (vehicle.lastMaintenance?.mileage || 0) >= 39000) {
-              toast.warning(`${vehicleData.plaka} plakalı araç bakım kilometresine yaklaşıyor!`);
-              warningCount++;
-            }
-          }
-        }
-      }
-    });
-
-    // Araç verilerini güncelle
-    localStorage.setItem('vehicles', JSON.stringify(updatedVehicles));
-    
-    // Yeni yükleme kaydı oluştur
-    const newUpload: ExcelUploadHistory = {
-      id: uuidv4(),
-      uploadDate: new Date().toLocaleString('tr-TR', {
-        year: 'numeric',
-        month: 'long',
-        day: 'numeric',
-        hour: '2-digit',
-        minute: '2-digit'
-      }),
-      fileName,
-      data: data, // Tüm veriyi olduğu gibi kaydet
-      updatedVehicles: updatedCount,
-      warningCount
-    };
-
-    // Yükleme geçmişini güncelle
-    const newHistory = [newUpload, ...uploadHistory];
-    setUploadHistory(newHistory);
-    localStorage.setItem('excel-upload-history', JSON.stringify(newHistory));
-    
-    toast.success(
-      `Excel dosyası başarıyla işlendi:\n` +
-      `• ${data.length} araç verisi okundu\n` +
-      `• ${updatedCount} aracın kilometresi güncellendi\n` +
-      `• ${warningCount} araç için bakım uyarısı mevcut`
-    );
-  };
-
-  const handleFileUpload = (e: React.ChangeEvent<HTMLInputElement>) => {
-    const file = e.target.files?.[0];
-    if (!file) return;
+  const handleFileUpload = useCallback((file: File) => {
+    if (!fileTypes.some(type => file.name.toLowerCase().endsWith(type))) {
+      toast.error('Lütfen geçerli bir Excel dosyası seçin (.xlsx veya .xls)');
+      return;
+    }
 
     setLoading(true);
     const reader = new FileReader();
-
-    reader.onload = (event) => {
+    reader.onload = (e) => {
       try {
-        const workbook = XLSX.read(event.target?.result, { 
-          type: 'binary',
-          cellDates: true,
-          dateNF: 'dd.mm.yyyy hh:mm:ss'
-        });
+        const data = e.target?.result;
+        if (!data) {
+          throw new Error('Dosya okunamadı');
+        }
+        
+        const workbook = XLSX.read(data, { type: 'binary' });
         const sheetName = workbook.SheetNames[0];
         const worksheet = workbook.Sheets[sheetName];
-
-        // Excel verilerini başlıklarla birlikte oku
-        const rawData = XLSX.utils.sheet_to_json(worksheet, {
+        const jsonData = XLSX.utils.sheet_to_json<RawExcelData>(worksheet, { 
           raw: false,
-          defval: '',
-          blankrows: false,
-          header: 1
-        }) as any[];
+          dateNF: 'dd.mm.yyyy'
+        });
 
-        if (rawData.length === 0) {
-          toast.error('Excel dosyası boş veya okunamıyor');
-          setPreviewData(null);
-          return;
+        if (jsonData.length === 0) {
+          throw new Error('Excel dosyasında veri bulunamadı');
         }
 
-        // İlk satırı başlık olarak al
-        const headers = rawData[0];
-        // Veri satırlarını al (başlık hariç)
-        const rows = rawData.slice(1);
+        console.log('Excel verisi:', jsonData);
 
-        // Excel'deki tam başlıklar
-        const columnHeaders = {
-          kayitNo: 'Kayıt No',
-          cihazNo: 'Cihaz Numarası',
-          plaka: 'Plaka',
-          surucu: 'Sürücü',
-          ilkMesafe: 'İlk Mesafe Sayacı Değ',
-          ilkMesafeTarih: 'İlk Mesafe Sayacı Değeri Tarihi',
-          sonMesafe: 'Son Mesafe Sayacı De',
-          sonMesafeTarih: 'Son Mesafe Sayacı Değeri Tarihi',
-          toplamMesafe: 'Toplam Mesafe (km)'
-        };
-
-        // Başlık indekslerini bul
-        const headerIndexes = {
-          kayitNo: headers.findIndex((h: string) => h?.trim() === columnHeaders.kayitNo),
-          cihazNo: headers.findIndex((h: string) => h?.trim() === columnHeaders.cihazNo),
-          plaka: headers.findIndex((h: string) => h?.trim() === columnHeaders.plaka),
-          surucu: headers.findIndex((h: string) => h?.trim() === columnHeaders.surucu),
-          ilkMesafe: headers.findIndex((h: string) => h?.trim() === columnHeaders.ilkMesafe),
-          ilkMesafeTarih: headers.findIndex((h: string) => h?.trim() === columnHeaders.ilkMesafeTarih),
-          sonMesafe: headers.findIndex((h: string) => h?.trim() === columnHeaders.sonMesafe),
-          sonMesafeTarih: headers.findIndex((h: string) => h?.trim() === columnHeaders.sonMesafeTarih),
-          toplamMesafe: headers.findIndex((h: string) => h?.trim() === columnHeaders.toplamMesafe)
-        };
-
-        console.log('Excel başlıkları:', headers);
-        console.log('Bulunan indeksler:', headerIndexes);
-
-        // Verileri dönüştür
-        const data = rows.map((row, idx) => {
-          const cleanNumber = (value: any): number => {
-            if (!value) return 0;
-            const cleaned = value.toString()
-              .replace(/[^\d.,]/g, '')
-              .replace(',', '.');
-            const parsed = parseFloat(cleaned);
-            return isNaN(parsed) ? 0 : parsed;
+        // Excel verilerini önizleme için ayarla
+        const previewRows: ExcelData[] = jsonData.map(row => {
+          console.log('İşlenen satır:', row);
+          const kilometre = row["İlk Mesafe Sayacı Değeri (km)"] || row["Son Mesafe Sayacı Değeri (km)"] || '0';
+          return {
+            Plaka: String(row["Plaka "] || '').trim(),
+            Kilometre: parseInt(String(kilometre).replace(/[^0-9.]/g, '')),
+            Tarih: String(row["İlk Mesafe Sayacı Değeri Tarihi "] || row["Son Mesafe Sayacı Değeri Tarihi "] || '').trim()
           };
+        }).filter(row => row.Plaka && row.Kilometre > 0);
 
-          const vehicleData: VehicleData = {
-            kayitNo: row[headerIndexes.kayitNo]?.toString() || '',
-            cihazNo: row[headerIndexes.cihazNo]?.toString() || '',
-            plaka: row[headerIndexes.plaka]?.toString() || '',
-            surucu: row[headerIndexes.surucu]?.toString() || '',
-            ilkMesafe: cleanNumber(row[headerIndexes.ilkMesafe]),
-            ilkMesafeTarih: row[headerIndexes.ilkMesafeTarih]?.toString() || '',
-            sonMesafe: cleanNumber(row[headerIndexes.sonMesafe]),
-            sonMesafeTarih: row[headerIndexes.sonMesafeTarih]?.toString() || '',
-            toplamMesafe: cleanNumber(row[headerIndexes.toplamMesafe])
-          };
+        console.log('Önizleme verileri:', previewRows);
+        setPreviewData(previewRows);
 
-          // Eğer toplam mesafe hesaplanmamışsa ve son mesafe ilk mesafeden büyükse
-          if (vehicleData.toplamMesafe === 0 && vehicleData.sonMesafe > vehicleData.ilkMesafe) {
-            vehicleData.toplamMesafe = vehicleData.sonMesafe - vehicleData.ilkMesafe;
+        const unmatched: string[] = [];
+        const updatedVehicles = [...vehicles];
+        let updateCount = 0;
+
+        previewRows.forEach((row) => {
+          if (!row.Plaka || !row.Kilometre) {
+            return;
           }
 
-          if (idx === 0) {
-            console.log('İlk satır verisi:', vehicleData);
-          }
+          const plate = row.Plaka.trim().toUpperCase();
+          const vehicleIndex = updatedVehicles.findIndex(v => v.plate.trim().toUpperCase() === plate);
 
-          return vehicleData;
+          if (vehicleIndex !== -1) {
+            const vehicle = updatedVehicles[vehicleIndex];
+            const oldMileage = vehicle.mileage || 0;
+            
+            if (row.Kilometre > oldMileage) {
+              updatedVehicles[vehicleIndex] = {
+                ...vehicle,
+                mileage: row.Kilometre
+              };
+              
+              updateCount++;
+
+              if (currentUser) {
+                auditLogService.createLog(
+                  currentUser,
+                  'update_vehicle',
+                  {
+                    entityId: vehicle.id,
+                    entityType: 'vehicle',
+                    description: `${vehicle.plate} plakalı aracın kilometresi güncellendi.`,
+                    oldValue: { mileage: oldMileage },
+                    newValue: { mileage: row.Kilometre }
+                  }
+                );
+              }
+            }
+          } else {
+            unmatched.push(plate);
+          }
         });
-        
-        setPreviewData(data);
-        processExcelData(data, file.name);
+
+        // Yükleme kaydını oluştur
+        const uploadRecord: UploadRecord = {
+          id: uuidv4(),
+          date: new Date().toISOString(),
+          fileName: file.name,
+          recordCount: previewRows.length,
+          updatedCount: updateCount,
+          unmatchedCount: unmatched.length,
+          data: previewRows
+        };
+
+        const newHistory = [uploadRecord, ...uploadHistory];
+        setUploadHistory(newHistory);
+        localStorage.setItem(UPLOAD_HISTORY_KEY, JSON.stringify(newHistory));
+
+        if (updateCount > 0) {
+          localStorage.setItem(VEHICLES_STORAGE_KEY, JSON.stringify(updatedVehicles));
+          setVehicles(updatedVehicles);
+          toast.success(`${updateCount} aracın kilometre bilgisi güncellendi.`);
+        }
+
+        if (unmatched.length > 0) {
+          setUnmatchedPlates(unmatched);
+          toast.warning(`${unmatched.length} plaka sistemde bulunamadı.`);
+        }
+
       } catch (error) {
-        console.error('Excel okuma hatası:', error);
-        toast.error('Excel dosyası işlenirken bir hata oluştu');
-        setPreviewData(null);
+        console.error('Excel dosyası işlenirken hata oluştu:', error);
+        toast.error(error instanceof Error ? error.message : 'Excel dosyası işlenirken bir hata oluştu.');
+        setPreviewData([]);
+        setSelectedUpload(null);
       } finally {
         setLoading(false);
       }
     };
 
-    reader.readAsBinaryString(file);
-  };
-
-  const handleDelete = (id: string) => {
-    const newHistory = uploadHistory.filter(upload => upload.id !== id);
-    setUploadHistory(newHistory);
-    localStorage.setItem('excel-upload-history', JSON.stringify(newHistory));
-    toast.success('Yükleme kaydı başarıyla silindi');
-  };
-
-  // Tarihi formatlayan yardımcı fonksiyon
-  const formatDate = (dateStr: string) => {
-    const date = new Date(dateStr);
-    const days = ['Pazar', 'Pazartesi', 'Salı', 'Çarşamba', 'Perşembe', 'Cuma', 'Cumartesi'];
-    const months = [
-      'Ocak', 'Şubat', 'Mart', 'Nisan', 'Mayıs', 'Haziran',
-      'Temmuz', 'Ağustos', 'Eylül', 'Ekim', 'Kasım', 'Aralık'
-    ];
-    
-    return {
-      dayName: days[date.getDay()],
-      day: date.getDate(),
-      month: months[date.getMonth()],
-      year: date.getFullYear(),
-      time: date.toLocaleTimeString('tr-TR', { hour: '2-digit', minute: '2-digit' })
+    reader.onerror = () => {
+      toast.error('Dosya okuma hatası.');
+      setLoading(false);
+      setPreviewData([]);
+      setSelectedUpload(null);
     };
-  };
 
-  // Yükleme geçmişini tarihe göre gruplandıran fonksiyon
-  const groupUploadsByDate = (uploads: ExcelUploadHistory[]) => {
-    const groups: { [key: string]: ExcelUploadHistory[] } = {};
-    
-    uploads.forEach(upload => {
-      if (!upload.uploadDate) return;
-      
-      const date = new Date(upload.uploadDate);
-      const key = `${date.getFullYear()}-${date.getMonth()}-${date.getDate()}`;
-      
-      if (!groups[key]) {
-        groups[key] = [];
+    reader.readAsBinaryString(file);
+  }, [vehicles, currentUser, uploadHistory]);
+
+  const handleDrag = useCallback((e: React.DragEvent) => {
+    e.preventDefault();
+    e.stopPropagation();
+    if (e.type === "dragenter" || e.type === "dragover") {
+      setDragActive(true);
+    } else if (e.type === "dragleave") {
+      setDragActive(false);
+    }
+  }, []);
+
+  const handleDrop = useCallback((e: React.DragEvent) => {
+    e.preventDefault();
+    e.stopPropagation();
+    setDragActive(false);
+
+    if (e.dataTransfer.files && e.dataTransfer.files[0]) {
+      handleFileUpload(e.dataTransfer.files[0]);
+    }
+  }, [handleFileUpload]);
+
+  const handleChange = useCallback((e: React.ChangeEvent<HTMLInputElement>) => {
+    e.preventDefault();
+    if (e.target.files && e.target.files[0]) {
+      handleFileUpload(e.target.files[0]);
+    }
+  }, [handleFileUpload]);
+
+  const handleDeleteHistory = useCallback((id: string) => {
+    if (window.confirm('Bu yükleme kaydını silmek istediğinize emin misiniz?')) {
+      const newHistory = uploadHistory.filter(record => record.id !== id);
+      setUploadHistory(newHistory);
+      localStorage.setItem(UPLOAD_HISTORY_KEY, JSON.stringify(newHistory));
+      if (selectedUpload?.id === id) {
+        setSelectedUpload(null);
       }
-      groups[key].push(upload);
+      toast.success('Yükleme kaydı silindi.');
+    }
+  }, [uploadHistory, selectedUpload]);
+
+  const groupByDate = useCallback((records: UploadRecord[]) => {
+    const groups: { [key: string]: UploadRecord[] } = {};
+    records.forEach(record => {
+      try {
+        if (!record?.date) {
+          console.warn('Kayıt için tarih bilgisi bulunamadı:', record);
+          return;
+        }
+
+        let dateToUse: Date;
+        try {
+          dateToUse = parseISO(record.date);
+          if (!isValid(dateToUse)) {
+            console.warn('Geçersiz tarih formatı:', record.date);
+            return;
+          }
+        } catch (error) {
+          console.warn('Tarih ayrıştırma hatası:', record.date);
+          return;
+        }
+
+        const dateKey = format(dateToUse, 'yyyy-MM-dd');
+        if (!groups[dateKey]) {
+          groups[dateKey] = [];
+        }
+        groups[dateKey].push(record);
+      } catch (error) {
+        console.error('Kayıt işlenirken hata oluştu:', error);
+      }
     });
-    
-    // Tarihleri yeniden eskiye sırala
-    return Object.entries(groups)
-      .sort(([a], [b]) => new Date(b).getTime() - new Date(a).getTime())
-      .reduce((acc, [key, value]) => {
-        acc[key] = value;
-        return acc;
-      }, {} as { [key: string]: ExcelUploadHistory[] });
-  };
+
+    // Tarihe göre sırala (en yeni en üstte)
+    const sortedGroups: { [key: string]: UploadRecord[] } = {};
+    Object.keys(groups)
+      .sort((a, b) => b.localeCompare(a))
+      .forEach(key => {
+        sortedGroups[key] = groups[key].sort((a, b) => 
+          new Date(b.date).getTime() - new Date(a.date).getTime()
+        );
+      });
+
+    return sortedGroups;
+  }, []);
+
+  // Sayfa yüklendiğinde geçersiz kayıtları temizle
+  useEffect(() => {
+    const cleanUploadHistory = () => {
+      const validRecords = uploadHistory.filter(record => {
+        try {
+          if (!record?.date) return false;
+          const date = parseISO(record.date);
+          return isValid(date);
+        } catch {
+          return false;
+        }
+      });
+
+      if (validRecords.length !== uploadHistory.length) {
+        setUploadHistory(validRecords);
+        localStorage.setItem(UPLOAD_HISTORY_KEY, JSON.stringify(validRecords));
+        console.info('Geçersiz kayıtlar temizlendi.');
+      }
+    };
+
+    cleanUploadHistory();
+  }, [uploadHistory]);
 
   return (
-    <div className="p-6 bg-white rounded-lg shadow-lg">
-      <h1 className="text-2xl font-bold mb-6">Km Bazında Takip</h1>
-      
-      <div className="mb-6">
-        <p className="text-gray-600 mb-4">
-          Araç kilometre verilerini güncellemek için Excel dosyanızı yükleyin.
-        </p>
-      </div>
+    <div className="container mx-auto px-4 py-8">
+      <h1 className="text-2xl font-bold text-white mb-6">Kilometre Verisi Yükle</h1>
 
-      <div className="border-2 border-dashed border-gray-600 rounded-lg p-8 text-center mb-8 bg-gray-900 text-white">
-        <input
-          type="file"
-          accept=".xlsx,.xls"
-          onChange={handleFileUpload}
-          className="hidden"
-          id="file-upload"
-          disabled={loading}
-        />
-        <label
-          htmlFor="file-upload"
-          className="cursor-pointer bg-blue-500 text-white px-6 py-3 rounded-lg hover:bg-blue-600 transition-colors inline-block"
-        >
-          {loading ? 'Yükleniyor...' : 'Excel Dosyası Seç'}
-        </label>
-        
-        <p className="mt-4 text-sm text-gray-400">
-          veya dosyayı bu alana sürükleyip bırakın
-        </p>
-      </div>
-
-      {previewData && (
-        <div className="mb-8">
-          <h2 className="text-xl font-semibold mb-4">Yüklenen Veriler (Önizleme)</h2>
-          <div className="overflow-x-auto">
-            <table className="w-full">
-              <thead className="bg-gray-50">
-                <tr>
-                  <th className="px-4 py-2 text-left">Kayıt No</th>
-                  <th className="px-4 py-2 text-left">Cihaz Numarası</th>
-                  <th className="px-4 py-2 text-left">Plaka</th>
-                  <th className="px-4 py-2 text-left">Sürücü</th>
-                  <th className="px-4 py-2 text-right">İlk Mesafe Sayacı Değ</th>
-                  <th className="px-4 py-2 text-left">İlk Mesafe Sayacı Değeri Tarihi</th>
-                  <th className="px-4 py-2 text-right">Son Mesafe Sayacı De</th>
-                  <th className="px-4 py-2 text-left">Son Mesafe Sayacı Değeri Tarihi</th>
-                  <th className="px-4 py-2 text-right">Toplam Mesafe (km)</th>
-                </tr>
-              </thead>
-              <tbody>
-                {previewData.map((row, index) => (
-                  <tr key={index} className="border-b hover:bg-gray-50">
-                    <td className="px-4 py-2">{row.kayitNo}</td>
-                    <td className="px-4 py-2">{row.cihazNo}</td>
-                    <td className="px-4 py-2">{row.plaka}</td>
-                    <td className="px-4 py-2">{row.surucu}</td>
-                    <td className="px-4 py-2 text-right">{row.ilkMesafe.toLocaleString('tr-TR')}</td>
-                    <td className="px-4 py-2">{row.ilkMesafeTarih}</td>
-                    <td className="px-4 py-2 text-right">{row.sonMesafe.toLocaleString('tr-TR')}</td>
-                    <td className="px-4 py-2">{row.sonMesafeTarih}</td>
-                    <td className="px-4 py-2 text-right">{row.toplamMesafe.toLocaleString('tr-TR')}</td>
-                  </tr>
-                ))}
-              </tbody>
-            </table>
-          </div>
+      <div className="bg-[#1C2128] rounded-lg p-6">
+        <div className="mb-6">
+          <h2 className="text-lg font-medium text-white mb-2">Excel Dosyası Yükle</h2>
+          <p className="text-gray-400 text-sm mb-4">
+            Excel dosyanızda "Plaka", "Kilometre" ve "Tarih" sütunları bulunmalıdır.
+          </p>
+          <form
+            onDragEnter={handleDrag}
+            onSubmit={(e) => e.preventDefault()}
+            className="w-full"
+          >
+            <label
+              className={`
+                relative flex flex-col items-center justify-center w-full p-6 
+                border-2 border-dashed rounded-lg cursor-pointer
+                transition-colors duration-200 ease-in-out
+                ${dragActive 
+                  ? 'border-blue-500 bg-blue-500/10' 
+                  : 'border-gray-700 hover:border-gray-500'
+                }
+              `}
+            >
+              <div className="flex flex-col items-center justify-center pt-5 pb-6">
+                <Upload 
+                  className={`w-12 h-12 mb-3 ${loading ? 'animate-bounce' : ''} ${
+                    dragActive ? 'text-blue-500' : 'text-gray-400'
+                  }`}
+                />
+                <p className="mb-2 text-sm text-gray-300">
+                  {loading 
+                    ? 'Yükleniyor...' 
+                    : <span>Excel dosyasını sürükleyin veya <span className="text-blue-500">seçmek için tıklayın</span></span>
+                  }
+                </p>
+                <p className="text-xs text-gray-500">
+                  Desteklenen formatlar: XLSX, XLS
+                </p>
+              </div>
+              <input
+                type="file"
+                className="hidden"
+                accept=".xlsx,.xls"
+                onChange={handleChange}
+                disabled={loading}
+              />
+              {dragActive && (
+                <div
+                  className="absolute inset-0 rounded-lg"
+                  onDragEnter={handleDrag}
+                  onDragLeave={handleDrag}
+                  onDragOver={handleDrag}
+                  onDrop={handleDrop}
+                />
+              )}
+            </label>
+          </form>
         </div>
-      )}
 
-      <div className="mt-8">
-        <h2 className="text-xl font-semibold mb-6">Yükleme Geçmişi</h2>
-        <div className="space-y-6">
-          {Object.entries(groupUploadsByDate(uploadHistory)).map(([dateKey, uploads]) => {
-            const firstUpload = uploads[0];
-            if (!firstUpload?.uploadDate) return null;
-            
-            const { dayName, day, month, year } = formatDate(firstUpload.uploadDate);
-            
-            return (
-              <div key={dateKey} className="border rounded-lg overflow-hidden">
-                <div className="bg-gray-100 px-4 py-3 border-b flex items-center justify-between">
-                  <div>
-                    <h3 className="font-medium text-gray-800">
-                      {dayName}, {day} {month} {year}
-                    </h3>
-                    <p className="text-sm text-gray-500 mt-1">
-                      {uploads.length} yükleme, toplam {uploads.reduce((sum, u) => sum + u.data.length, 0)} araç
-                    </p>
+        {/* Excel Önizleme */}
+        {previewData.length > 0 && (
+          <div className="mt-6">
+            <h3 className="text-lg font-medium text-white mb-2">Excel Önizleme</h3>
+            <div className="bg-[#2D333B] rounded-lg p-4 overflow-x-auto">
+              <table className="min-w-full divide-y divide-gray-700">
+                <thead>
+                  <tr>
+                    <th className="px-4 py-2 text-left text-xs font-medium text-gray-400">Plaka</th>
+                    <th className="px-4 py-2 text-right text-xs font-medium text-gray-400">Kilometre</th>
+                    <th className="px-4 py-2 text-left text-xs font-medium text-gray-400">Tarih</th>
+                  </tr>
+                </thead>
+                <tbody className="divide-y divide-gray-700">
+                  {previewData.map((row, index) => (
+                    <tr key={index} className="hover:bg-gray-700/30">
+                      <td className="px-4 py-2 text-sm text-gray-300">{row.Plaka}</td>
+                      <td className="px-4 py-2 text-sm text-right text-gray-300">
+                        {row.Kilometre?.toLocaleString('tr-TR')}
+                      </td>
+                      <td className="px-4 py-2 text-sm text-gray-300">{row.Tarih}</td>
+                    </tr>
+                  ))}
+                </tbody>
+              </table>
+            </div>
+          </div>
+        )}
+
+        {unmatchedPlates.length > 0 && (
+          <div className="mt-6">
+            <h3 className="text-lg font-medium text-white mb-2">Eşleşmeyen Plakalar</h3>
+            <div className="bg-[#2D333B] rounded-lg p-4">
+              <p className="text-gray-400 mb-2">
+                Aşağıdaki plakalar sistemde bulunamadı:
+              </p>
+              <div className="space-y-1">
+                {unmatchedPlates.map((plate, index) => (
+                  <div key={index} className="text-red-400">
+                    {plate}
                   </div>
-                  <div className="text-sm text-gray-500">
-                    {uploads.reduce((sum, u) => sum + (u.warningCount || 0), 0)} uyarı
+                ))}
+              </div>
+            </div>
+          </div>
+        )}
+
+        {/* Yükleme Geçmişi */}
+        <div className="mt-8">
+          <h2 className="text-lg font-medium text-white mb-4">Yükleme Geçmişi</h2>
+          <div className="space-y-4">
+            {Object.entries(groupByDate(uploadHistory)).map(([date, records]) => (
+              <div key={date} className="bg-[#2D333B] rounded-lg overflow-hidden">
+                <div className="bg-[#22272E] px-4 py-2 flex items-center justify-between">
+                  <div className="flex items-center space-x-2">
+                    <Calendar className="w-4 h-4 text-gray-400" />
+                    <span className="text-sm font-medium text-gray-300">
+                      {(() => {
+                        try {
+                          const parsedDate = parseISO(date);
+                          return isValid(parsedDate) 
+                            ? format(parsedDate, 'd MMMM yyyy', { locale: tr })
+                            : 'Geçersiz Tarih';
+                        } catch {
+                          return 'Geçersiz Tarih';
+                        }
+                      })()}
+                    </span>
                   </div>
+                  <span className="text-sm text-gray-400">
+                    {records.length} yükleme
+                  </span>
                 </div>
-                <div className="divide-y">
-                  {uploads.map((upload) => (
-                    <div 
-                      key={upload.id}
-                      className="p-4 hover:bg-gray-50 transition-colors"
-                    >
-                      <div className="flex justify-between items-start">
+                <div className="divide-y divide-gray-700">
+                  {records.map((record) => (
+                    <div key={record.id} className="p-4">
+                      <div className="flex items-start justify-between">
                         <div 
                           className="flex-1 cursor-pointer"
-                          onClick={() => setSelectedUpload(selectedUpload?.id === upload.id ? null : upload)}
+                          onClick={() => setSelectedUpload(selectedUpload?.id === record.id ? null : record)}
                         >
-                          <div className="flex items-center gap-3">
-                            <span className="text-sm font-medium text-blue-600 bg-blue-50 px-2 py-1 rounded">
-                              {formatDate(upload.uploadDate).time}
+                          <div className="flex items-center space-x-2">
+                            <span className="text-sm text-gray-300">
+                              {(() => {
+                                try {
+                                  const parsedDate = parseISO(record.date);
+                                  return isValid(parsedDate)
+                                    ? format(parsedDate, 'HH:mm', { locale: tr })
+                                    : '--:--';
+                                } catch {
+                                  return '--:--';
+                                }
+                              })()}
                             </span>
-                            <p className="font-medium text-gray-800 flex items-center gap-2">
-                              {upload.fileName}
-                              {selectedUpload?.id === upload.id ? (
-                                <ChevronDown className="w-4 h-4" />
-                              ) : (
-                                <ChevronRight className="w-4 h-4" />
-                              )}
-                            </p>
+                            <h3 className="text-sm font-medium text-gray-200">
+                              {record.fileName}
+                            </h3>
+                            {selectedUpload?.id === record.id ? (
+                              <ChevronDown className="w-4 h-4 text-gray-400" />
+                            ) : (
+                              <ChevronRight className="w-4 h-4 text-gray-400" />
+                            )}
                           </div>
-                          <div className="flex gap-4 mt-2">
-                            <div className="flex items-center gap-2">
-                              <span className="w-2 h-2 rounded-full bg-gray-400"></span>
-                              <span className="text-sm text-gray-600">
-                                {upload.data.length} araç
+                          <div className="mt-1 flex items-center space-x-4 text-xs">
+                            <span className="text-gray-400">
+                              {record.recordCount} kayıt
+                            </span>
+                            <span className="text-green-400">
+                              {record.updatedCount} güncelleme
+                            </span>
+                            {record.unmatchedCount > 0 && (
+                              <span className="text-red-400">
+                                {record.unmatchedCount} eşleşmeyen
                               </span>
-                            </div>
-                            <div className="flex items-center gap-2">
-                              <span className="w-2 h-2 rounded-full bg-green-400"></span>
-                              <span className="text-sm text-green-600">
-                                {upload.updatedVehicles} güncelleme
-                              </span>
-                            </div>
-                            {upload.warningCount > 0 && (
-                              <div className="flex items-center gap-2">
-                                <span className="w-2 h-2 rounded-full bg-orange-400"></span>
-                                <span className="text-sm text-orange-600">
-                                  {upload.warningCount} uyarı
-                                </span>
-                              </div>
                             )}
                           </div>
                         </div>
                         <button
-                          onClick={(e) => {
-                            e.stopPropagation();
-                            handleDelete(upload.id);
-                          }}
-                          className="p-2 text-gray-500 hover:text-red-600 hover:bg-red-50 rounded-full transition-colors"
-                          title="Kaydı Sil"
+                          onClick={() => handleDeleteHistory(record.id)}
+                          className="p-1 hover:bg-red-500/10 rounded-full transition-colors"
+                          title="Sil"
                         >
-                          <Trash2 size={18} />
+                          <Trash2 className="w-4 h-4 text-red-400" />
                         </button>
                       </div>
-                      
-                      {selectedUpload?.id === upload.id && (
-                        <div className="mt-4 border-t pt-4">
-                          <div className="overflow-x-auto">
-                            <table className="w-full text-sm">
-                              <thead className="bg-gray-50">
-                                <tr>
-                                  <th className="px-4 py-2 text-left font-medium text-gray-600">Kayıt No</th>
-                                  <th className="px-4 py-2 text-left font-medium text-gray-600">Cihaz Numarası</th>
-                                  <th className="px-4 py-2 text-left font-medium text-gray-600">Plaka</th>
-                                  <th className="px-4 py-2 text-left font-medium text-gray-600">Sürücü</th>
-                                  <th className="px-4 py-2 text-right font-medium text-gray-600">İlk Mesafe</th>
-                                  <th className="px-4 py-2 text-left font-medium text-gray-600">İlk Mesafe Tarihi</th>
-                                  <th className="px-4 py-2 text-right font-medium text-gray-600">Son Mesafe</th>
-                                  <th className="px-4 py-2 text-left font-medium text-gray-600">Son Mesafe Tarihi</th>
-                                  <th className="px-4 py-2 text-right font-medium text-gray-600">Toplam Mesafe</th>
+
+                      {selectedUpload?.id === record.id && (
+                        <div className="mt-4 overflow-x-auto">
+                          <table className="min-w-full divide-y divide-gray-700">
+                            <thead>
+                              <tr>
+                                <th className="px-4 py-2 text-left text-xs font-medium text-gray-400">Plaka</th>
+                                <th className="px-4 py-2 text-right text-xs font-medium text-gray-400">Kilometre</th>
+                                <th className="px-4 py-2 text-left text-xs font-medium text-gray-400">Tarih</th>
+                              </tr>
+                            </thead>
+                            <tbody className="divide-y divide-gray-700">
+                              {record.data.map((row, index) => (
+                                <tr key={index} className="hover:bg-gray-700/30">
+                                  <td className="px-4 py-2 text-sm text-gray-300">{row.Plaka}</td>
+                                  <td className="px-4 py-2 text-sm text-right text-gray-300">
+                                    {row.Kilometre?.toLocaleString('tr-TR')}
+                                  </td>
+                                  <td className="px-4 py-2 text-sm text-gray-300">{row.Tarih}</td>
                                 </tr>
-                              </thead>
-                              <tbody className="divide-y divide-gray-200">
-                                {upload.data && upload.data.map((item, index) => (
-                                  <tr key={index} className="hover:bg-gray-50">
-                                    <td className="px-4 py-2 text-gray-900">{item.kayitNo}</td>
-                                    <td className="px-4 py-2 text-gray-900">{item.cihazNo}</td>
-                                    <td className="px-4 py-2 text-gray-900 font-medium">{item.plaka}</td>
-                                    <td className="px-4 py-2 text-gray-900">{item.surucu}</td>
-                                    <td className="px-4 py-2 text-right text-gray-900">
-                                      {typeof item.ilkMesafe === 'number' 
-                                        ? item.ilkMesafe.toLocaleString('tr-TR')
-                                        : item.ilkMesafe}
-                                    </td>
-                                    <td className="px-4 py-2 text-gray-900">{item.ilkMesafeTarih}</td>
-                                    <td className="px-4 py-2 text-right text-gray-900">
-                                      {typeof item.sonMesafe === 'number'
-                                        ? item.sonMesafe.toLocaleString('tr-TR')
-                                        : item.sonMesafe}
-                                    </td>
-                                    <td className="px-4 py-2 text-gray-900">{item.sonMesafeTarih}</td>
-                                    <td className="px-4 py-2 text-right text-gray-900 font-medium">
-                                      {typeof item.toplamMesafe === 'number'
-                                        ? `${item.toplamMesafe.toLocaleString('tr-TR')} km`
-                                        : item.toplamMesafe}
-                                    </td>
-                                  </tr>
-                                ))}
-                              </tbody>
-                            </table>
-                          </div>
+                              ))}
+                            </tbody>
+                          </table>
                         </div>
                       )}
                     </div>
                   ))}
                 </div>
               </div>
-            );
-          })}
+            ))}
+          </div>
         </div>
       </div>
 
       <div className="mt-6">
-        <h2 className="text-lg font-semibold mb-3">Önemli Notlar:</h2>
-        <ul className="list-disc list-inside text-gray-600">
+        <h2 className="text-lg font-semibold mb-3 text-white">Önemli Notlar:</h2>
+        <ul className="list-disc list-inside text-gray-400">
           <li>Excel dosyanızda tüm gerekli sütunlar bulunmalıdır</li>
           <li>Sistem, araçların mevcut kilometresinden düşük değerleri dikkate almaz</li>
           <li>Son bakımdan itibaren 39.000 km'yi geçen araçlar için uyarı verilir</li>

@@ -1,17 +1,15 @@
 import React, { useState, useEffect } from 'react';
-import { Truck, Wrench, FileText, Calendar, Upload, Plus, ArrowLeft, Edit2, Trash2, Bell, Warehouse } from 'lucide-react';
-import { Vehicle, VehicleFormData, Tire, MaintenanceRecord, MaintenanceType, VehicleType, VehicleStatus } from '../types/Vehicle';
+import { Truck, Wrench, FileText, Calendar, Upload, Plus, ArrowLeft, Edit2, Trash2, Bell, Edit, PenSquare } from 'lucide-react';
+import { Vehicle, VehicleFormData, Tire, MaintenanceRecord, MaintenanceType, TireLocation } from '../types/Vehicle';
 import { VehicleForm } from '../components/vehicles/VehicleForm';
 import { VehicleImport } from '../components/vehicles/VehicleImport';
-import { VehicleDetail } from '../components/vehicles/VehicleDetail';
 import { v4 as uuidv4 } from 'uuid';
 import { useNavigate, Link } from 'react-router-dom';
-import { useVehicles } from '../hooks/useVehicles';
 
 const VEHICLES_STORAGE_KEY = 'fleet-management-vehicles';
 
 export const Vehicles: React.FC = () => {
-  const { vehicles, setVehicles, addVehicle, updateVehicle, deleteVehicle } = useVehicles();
+  const [vehicles, setVehicles] = useState<Vehicle[]>([]);
   const [showForm, setShowForm] = useState(false);
   const [showImport, setShowImport] = useState(false);
   const [selectedVehicle, setSelectedVehicle] = useState<Vehicle | null>(null);
@@ -24,22 +22,15 @@ export const Vehicles: React.FC = () => {
   const [newMaintenance, setNewMaintenance] = useState<MaintenanceRecord | null>(null);
   const [notifications, setNotifications] = useState<string[]>([]);
   const [showNotifications, setShowNotifications] = useState(false);
+  const [showMaintenanceModal, setShowMaintenanceModal] = useState(false);
+  const [maintenanceDate, setMaintenanceDate] = useState('');
+  const [technicalInspectionDate, setTechnicalInspectionDate] = useState('');
+  const [showTireAssignModal, setShowTireAssignModal] = useState(false);
+  const [availableTires, setAvailableTires] = useState<Tire[]>([]);
+  const [selectedTireId, setSelectedTireId] = useState('');
+  const [tirePosition, setTirePosition] = useState('');
+  const [installationMileage, setInstallationMileage] = useState(0);
   const navigate = useNavigate();
-
-  const [formData, setFormData] = useState({
-    plate: '',
-    brand: '',
-    model: '',
-    type: 'Damperli Kamyon' as VehicleType,
-    year: new Date().getFullYear(),
-    mileage: 0,
-    chassisNumber: '',
-    lastMaintenance: new Date().toISOString().split('T')[0],
-    nextMaintenance: new Date(new Date().setMonth(new Date().getMonth() + 6)).toISOString().split('T')[0],
-    lastInspection: new Date().toISOString().split('T')[0],
-    nextInspection: new Date(new Date().setFullYear(new Date().getFullYear() + 1)).toISOString().split('T')[0],
-    status: 'Aktif' as VehicleStatus
-  });
 
   useEffect(() => {
     const loadVehicles = () => {
@@ -55,7 +46,7 @@ export const Vehicles: React.FC = () => {
               plate: 'ABC 1234',
               brand: 'Volvo',
               model: 'FH16', 
-              type: 'Çekici Kamyon',
+              type: 'Çekici',
               year: 2020,
               mileage: 0,
               chassisNumber: 'YV2RT40A8LB123456',
@@ -63,6 +54,7 @@ export const Vehicles: React.FC = () => {
               nextMaintenance: '2024-04-15',
               lastInspection: '2023-06-15',
               nextInspection: '2024-06-15',
+              technicalInspectionDate: '2024-06-15',
               status: 'Aktif',
               tires: [],
               maintenanceHistory: []
@@ -72,7 +64,7 @@ export const Vehicles: React.FC = () => {
               plate: 'DEF 5678',
               brand: 'Mercedes',
               model: 'Actros', 
-              type: 'Çekici Kamyon',
+              type: 'Çekici',
               year: 2021,
               mileage: 0,
               chassisNumber: 'WDB96340310123456',
@@ -80,7 +72,8 @@ export const Vehicles: React.FC = () => {
               nextMaintenance: '2024-05-01',
               lastInspection: '2023-07-01',
               nextInspection: '2024-07-01',
-              status: 'Yetkili Servis',
+              technicalInspectionDate: '2024-07-01',
+              status: 'Yetkili Servis' as Vehicle['status'],
               tires: [],
               maintenanceHistory: []
             },
@@ -89,7 +82,7 @@ export const Vehicles: React.FC = () => {
               plate: 'GHI 9012',
               brand: 'Scania',
               model: 'R750', 
-              type: 'Çekici Kamyon',
+              type: 'Çekici',
               year: 2022,
               mileage: 0,
               chassisNumber: 'YS2R4X20002123456',
@@ -97,6 +90,7 @@ export const Vehicles: React.FC = () => {
               nextMaintenance: '2024-05-20',
               lastInspection: '2023-08-20',
               nextInspection: '2024-08-20',
+              technicalInspectionDate: '2024-08-20',
               status: 'Aktif',
               tires: [],
               maintenanceHistory: []
@@ -114,6 +108,19 @@ export const Vehicles: React.FC = () => {
     };
 
     loadVehicles();
+  }, []);
+
+  useEffect(() => {
+    const loadTires = () => {
+      const savedTires = localStorage.getItem('fleet-management-tires');
+      if (savedTires) {
+        const tires: Tire[] = JSON.parse(savedTires);
+        // Sadece depodaki lastikleri filtrele
+        const storageTires = tires.filter(tire => tire.location === 'Depo');
+        setAvailableTires(storageTires);
+      }
+    };
+    loadTires();
   }, []);
 
   // Bakım tarihlerini kontrol eden fonksiyon
@@ -160,6 +167,7 @@ export const Vehicles: React.FC = () => {
   }, [vehicles]);
 
   const handleAddVehicle = (data: VehicleFormData) => {
+    // Plaka kontrolü
     const plateExists = vehicles.some(vehicle => 
       vehicle.plate.toLowerCase() === data.plate.toLowerCase()
     );
@@ -187,24 +195,30 @@ export const Vehicles: React.FC = () => {
       nextMaintenance: nextMaintenanceDate.toISOString().split('T')[0],
       lastInspection: today.toISOString().split('T')[0],
       nextInspection: nextInspectionDate.toISOString().split('T')[0],
-      status: 'Aktif' as VehicleStatus,
+      technicalInspectionDate: nextInspectionDate.toISOString().split('T')[0],
+      status: 'Aktif',
       tires: [],
       maintenanceHistory: []
     };
-
-    addVehicle(newVehicle);
+    const updatedVehicles = [...vehicles, newVehicle];
+    setVehicles(updatedVehicles);
+    localStorage.setItem(VEHICLES_STORAGE_KEY, JSON.stringify(updatedVehicles));
     setShowForm(false);
     setError(null);
   };
 
   const handleImportVehicles = (importedVehicles: Vehicle[]) => {
-    importedVehicles.forEach(vehicle => addVehicle(vehicle));
+    const updatedVehicles = [...vehicles, ...importedVehicles];
+    setVehicles(updatedVehicles);
+    localStorage.setItem(VEHICLES_STORAGE_KEY, JSON.stringify(updatedVehicles));
     setShowImport(false);
   };
 
   const handleDeleteVehicle = (id: string) => {
     if (window.confirm('Bu aracı silmek istediğinizden emin misiniz?')) {
-      deleteVehicle(id);
+      const updatedVehicles = vehicles.filter(vehicle => vehicle.id !== id);
+      setVehicles(updatedVehicles);
+      localStorage.setItem(VEHICLES_STORAGE_KEY, JSON.stringify(updatedVehicles));
     }
   };
 
@@ -337,6 +351,23 @@ export const Vehicles: React.FC = () => {
     }
   };
 
+  const handleMaintenanceUpdate = () => {
+    if (selectedVehicle) {
+      const nextMaintenanceDate = new Date(maintenanceDate);
+      nextMaintenanceDate.setMonth(nextMaintenanceDate.getMonth() + 6);
+
+      const updatedVehicle = {
+        ...selectedVehicle,
+        lastMaintenance: maintenanceDate,
+        nextMaintenance: nextMaintenanceDate.toISOString().split('T')[0],
+        technicalInspectionDate: technicalInspectionDate
+      };
+
+      handleUpdateVehicle(updatedVehicle);
+      setShowMaintenanceModal(false);
+    }
+  };
+
   // Bildirim butonu ve paneli için JSX
   const notificationButton = (
     <div className="relative">
@@ -368,6 +399,45 @@ export const Vehicles: React.FC = () => {
       )}
     </div>
   );
+
+  // Lastik atama işlemi
+  const handleTireAssignment = () => {
+    if (!selectedVehicle || !selectedTireId) return;
+
+    const tire = availableTires.find(t => t.id === selectedTireId);
+    if (!tire) return;
+
+    // Lastiği güncelle
+    const updatedTire: Tire = {
+      ...tire,
+      location: 'Takılı',
+      position: tirePosition,
+      installationDate: new Date().toISOString().split('T')[0],
+      installationMileage: installationMileage
+    };
+
+    // Aracı güncelle
+    const updatedVehicle = {
+      ...selectedVehicle,
+      tires: [...selectedVehicle.tires, updatedTire]
+    };
+
+    // Lastik veritabanını güncelle
+    const savedTires = localStorage.getItem('fleet-management-tires');
+    if (savedTires) {
+      const tires: Tire[] = JSON.parse(savedTires);
+      const updatedTires = tires.map(t => t.id === selectedTireId ? updatedTire : t);
+      localStorage.setItem('fleet-management-tires', JSON.stringify(updatedTires));
+      setAvailableTires(updatedTires.filter(t => t.location === 'Depo'));
+    }
+
+    // Araç veritabanını güncelle
+    handleUpdateVehicle(updatedVehicle);
+    setShowTireAssignModal(false);
+    setSelectedTireId('');
+    setTirePosition('');
+    setInstallationMileage(0);
+  };
 
   if (loading) {
     return (
@@ -407,14 +477,239 @@ export const Vehicles: React.FC = () => {
 
   if (showVehicleDetail && selectedVehicle) {
     return (
-      <VehicleDetail
-        vehicle={selectedVehicle}
-        onClose={() => {
-          setShowVehicleDetail(false);
-          setSelectedVehicle(null);
-        }}
-        onUpdate={updateVehicle}
-      />
+      <div className="space-y-6">
+        <div className="flex items-center justify-between mb-6">
+          <div className="flex items-center space-x-4">
+            <button
+              onClick={() => {
+                setShowVehicleDetail(false);
+                setSelectedVehicle(null);
+              }}
+              className="text-gray-400 hover:text-white"
+            >
+              <ArrowLeft className="w-6 h-6" />
+            </button>
+            <h2 className="text-2xl font-semibold text-white">
+              {selectedVehicle.plate} - Lastik Yönetimi
+            </h2>
+          </div>
+        </div>
+
+        <div className="bg-[#1C2128] rounded-lg mb-6">
+          <div className="border-b border-gray-700">
+            <nav className="flex overflow-x-auto">
+              <button
+                onClick={() => setActiveTab('bakim-gecmisi')}
+                className="px-4 py-3 text-sm font-medium whitespace-nowrap border-b-2 border-blue-500 text-blue-500"
+              >
+                Bakım Geçmişi
+              </button>
+            </nav>
+          </div>
+        </div>
+
+        {activeTab === 'bakim-gecmisi' && (
+          <div className="space-y-6">
+            <div className="flex justify-between items-center">
+              <h3 className="text-lg font-medium text-white">Bakım Geçmişi</h3>
+              <button
+                onClick={() => {
+                  const defaultMaintenance: MaintenanceRecord = {
+                    id: uuidv4(),
+                    date: new Date().toISOString().split('T')[0],
+                    type: 'Periyodik Bakım' as MaintenanceType,
+                    mileage: selectedVehicle.mileage,
+                    description: '',
+                    cost: 0,
+                    location: '',
+                    technician: '',
+                    parts: [],
+                    nextMaintenanceMileage: selectedVehicle.mileage + 20000,
+                    nextMaintenanceDate: new Date(new Date().setMonth(new Date().getMonth() + 6)).toISOString().split('T')[0]
+                  };
+                  setShowMaintenanceForm(true);
+                  setNewMaintenance(defaultMaintenance);
+                }}
+                className="bg-blue-500 hover:bg-blue-600 text-white px-4 py-2 rounded-lg flex items-center"
+              >
+                <Plus className="w-5 h-5 mr-2" />
+                Yeni Bakım Kaydı
+              </button>
+            </div>
+
+            {showMaintenanceForm && (
+              <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50">
+                <div className="bg-[#2D333B] rounded-lg p-6 w-full max-w-md">
+                  <h2 className="text-xl font-semibold text-white mb-4">Periyodik Bakım Kaydı</h2>
+                  <div className="space-y-4">
+                    <div>
+                      <label className="block text-sm font-medium text-gray-300 mb-1">Tarih</label>
+                      <input
+                        type="date"
+                        value={newMaintenance?.date || ''}
+                        onChange={(e) => {
+                          if (newMaintenance) {
+                            const nextDate = new Date(e.target.value);
+                            nextDate.setMonth(nextDate.getMonth() + 6);
+                            setNewMaintenance({
+                              ...newMaintenance,
+                              date: e.target.value,
+                              nextMaintenanceDate: nextDate.toISOString().split('T')[0],
+                              type: 'Periyodik Bakım' as MaintenanceType
+                            });
+                          }
+                        }}
+                        className="w-full px-3 py-2 bg-[#1C2128] border border-gray-700 rounded-lg text-white"
+                      />
+                    </div>
+
+                    <div>
+                      <label className="block text-sm font-medium text-gray-300 mb-1">Kilometre</label>
+                      <input
+                        type="number"
+                        value={newMaintenance?.mileage || 0}
+                        onChange={(e) => {
+                          if (newMaintenance) {
+                            const mileage = parseInt(e.target.value);
+                            setNewMaintenance({
+                              ...newMaintenance,
+                              mileage: mileage,
+                              nextMaintenanceMileage: mileage + 20000,
+                              type: 'Periyodik Bakım' as MaintenanceType,
+                              description: 'Periyodik Bakım',
+                              cost: 0
+                            });
+                          }
+                        }}
+                        className="w-full px-3 py-2 bg-[#1C2128] border border-gray-700 rounded-lg text-white"
+                      />
+                    </div>
+
+                    <div>
+                      <div className="flex items-center justify-between">
+                        <label className="block text-sm font-medium text-gray-300 mb-1">Sonraki Bakım Tarihi (Opsiyonel)</label>
+                        <span className="text-xs text-gray-400">Varsayılan: 6 ay sonra</span>
+                      </div>
+                      <input
+                        type="date"
+                        value={newMaintenance?.nextMaintenanceDate || ''}
+                        onChange={(e) => {
+                          if (newMaintenance) {
+                            setNewMaintenance({
+                              ...newMaintenance,
+                              nextMaintenanceDate: e.target.value
+                            });
+                          }
+                        }}
+                        className="w-full px-3 py-2 bg-[#1C2128] border border-gray-700 rounded-lg text-white"
+                      />
+                    </div>
+
+                    <div className="flex justify-end space-x-4 mt-6">
+                      <button
+                        onClick={() => {
+                          setShowMaintenanceForm(false);
+                          setNewMaintenance(null);
+                        }}
+                        className="bg-gray-600 hover:bg-gray-700 text-white px-4 py-2 rounded-lg text-sm"
+                      >
+                        İptal
+                      </button>
+                      <button
+                        onClick={handleAddMaintenance}
+                        className="bg-blue-500 hover:bg-blue-600 text-white px-4 py-2 rounded-lg text-sm"
+                      >
+                        Kaydet
+                      </button>
+                    </div>
+                  </div>
+                </div>
+              </div>
+            )}
+
+            <div className="bg-[#1C2128] rounded-lg overflow-hidden">
+              <table className="min-w-full divide-y divide-gray-700">
+                <thead>
+                  <tr>
+                    <th className="px-6 py-3 text-left text-xs font-medium text-gray-300 uppercase tracking-wider">Tarih</th>
+                    <th className="px-6 py-3 text-left text-xs font-medium text-gray-300 uppercase tracking-wider">KM</th>
+                    <th className="px-6 py-3 text-left text-xs font-medium text-gray-300 uppercase tracking-wider">Sonraki Bakım</th>
+                    <th className="px-6 py-3 text-left text-xs font-medium text-gray-300 uppercase tracking-wider">İşlemler</th>
+                  </tr>
+                </thead>
+                <tbody className="divide-y divide-gray-700">
+                  {(selectedVehicle.maintenanceHistory || [])
+                    .sort((a, b) => new Date(b.date).getTime() - new Date(a.date).getTime())
+                    .map((record) => (
+                      <tr key={record.id}>
+                        <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-300">
+                          {new Date(record.date).toLocaleDateString('tr-TR')}
+                        </td>
+                        <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-300">
+                          {record.mileage ? record.mileage.toLocaleString() : '0'} km
+                        </td>
+                        <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-300">
+                          {record.nextMaintenanceMileage.toLocaleString()} km / {new Date(record.nextMaintenanceDate).toLocaleDateString('tr-TR')}
+                        </td>
+                        <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-300">
+                          <button
+                            onClick={() => {
+                              const updatedVehicle = {
+                                ...selectedVehicle,
+                                maintenanceHistory: selectedVehicle.maintenanceHistory.filter(r => r.id !== record.id)
+                              };
+                              handleUpdateVehicle(updatedVehicle);
+                            }}
+                            className="text-red-400 hover:text-red-300"
+                          >
+                            <Trash2 className="w-5 h-5" />
+                          </button>
+                        </td>
+                      </tr>
+                    ))}
+                </tbody>
+              </table>
+            </div>
+
+            <div className="mt-6">
+              <h4 className="text-lg font-medium text-white mb-4">Bakım İstatistikleri</h4>
+              <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
+                <div className="bg-[#1C2128] rounded-lg p-6">
+                  <h5 className="text-sm font-medium text-gray-400 mb-2">Ortalama Bakım Aralığı</h5>
+                  <p className="text-2xl font-semibold text-white">
+                    {(() => {
+                      const history = selectedVehicle.maintenanceHistory || [];
+                      if (history.length < 2) return "Yetersiz Veri";
+                      const intervals = history
+                        .sort((a, b) => new Date(b.date).getTime() - new Date(a.date).getTime())
+                        .reduce((acc, curr, idx, arr) => {
+                          if (idx === 0) return acc;
+                          const diff = curr.mileage - arr[idx - 1].mileage;
+                          return [...acc, Math.abs(diff)];
+                        }, [] as number[]);
+                      const average = intervals.reduce((sum, val) => sum + val, 0) / intervals.length;
+                      return `${Math.round(average).toLocaleString()} km`;
+                    })()}
+                  </p>
+                </div>
+                <div className="bg-[#1C2128] rounded-lg p-6">
+                  <h5 className="text-sm font-medium text-gray-400 mb-2">Son Bakımdan Bu Yana</h5>
+                  <p className="text-2xl font-semibold text-white">
+                    {(() => {
+                      const lastMaintenance = [...(selectedVehicle.maintenanceHistory || [])].sort((a, b) => 
+                        new Date(b.date).getTime() - new Date(a.date).getTime()
+                      )[0];
+                      if (!lastMaintenance) return "Bakım Kaydı Yok";
+                      const kmSince = selectedVehicle.mileage - lastMaintenance.mileage;
+                      return `${kmSince.toLocaleString()} km`;
+                    })()}
+                  </p>
+                </div>
+              </div>
+            </div>
+          </div>
+        )}
+      </div>
     );
   }
 
@@ -424,13 +719,6 @@ export const Vehicles: React.FC = () => {
         <h1 className="text-2xl font-bold text-white">Araçlar</h1>
         <div className="flex items-center space-x-4">
           {notificationButton}
-          <Link
-            to="/tire-warehouse"
-            className="bg-blue-500 hover:bg-blue-600 text-white px-4 py-2 rounded-lg text-sm flex items-center"
-          >
-            <Warehouse className="w-4 h-4 mr-2" />
-            Lastik Deposu
-          </Link>
           <button
             onClick={() => setShowForm(true)}
             className="bg-blue-500 hover:bg-blue-600 text-white px-4 py-2 rounded-lg flex items-center"
@@ -528,12 +816,14 @@ export const Vehicles: React.FC = () => {
             {filteredVehicles.map((vehicle) => (
               <tr key={vehicle.id}>
                 <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-300">
-                  <Link
-                    to={`/vehicles/${vehicle.id}/tires`}
-                    className="text-blue-400 hover:text-blue-300"
+                  <button
+                    onClick={() => {
+                      navigate(`/vehicles/${vehicle.id}/tires`);
+                    }}
+                    className="text-blue-400 hover:text-blue-300 hover:underline"
                   >
                     {vehicle.plate}
-                  </Link>
+                  </button>
                 </td>
                 <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-300">
                   {vehicle.model}
@@ -554,15 +844,37 @@ export const Vehicles: React.FC = () => {
                   {new Date(vehicle.lastInspection).toLocaleDateString('tr-TR')} - {new Date(vehicle.nextInspection).toLocaleDateString('tr-TR')}
                 </td>
                 <td className="px-6 py-4 whitespace-nowrap text-sm">
-                  <span className={`inline-flex px-2 py-1 rounded-full text-xs font-medium ${
-                    vehicle.status === 'Aktif'
-                      ? 'bg-green-900/50 text-green-300'
-                      : vehicle.status === 'Kademe'
-                      ? 'bg-yellow-900/50 text-yellow-300'
-                      : 'bg-red-900/50 text-red-300'
-                  }`}>
+                  <button
+                    type="button"
+                    onClick={(e) => {
+                      e.preventDefault();
+                      console.log('Mevcut durum:', vehicle.status);
+                      
+                      // Basit döngüsel durum değişimi
+                      const newStatus: Vehicle['status'] = vehicle.status === 'Aktif' 
+                        ? 'Kademe' 
+                        : vehicle.status === 'Kademe'
+                        ? 'Yetkili Servis'
+                        : 'Aktif';
+                      
+                      console.log('Yeni durum:', newStatus);
+                      
+                      const updatedVehicle = {
+                        ...vehicle,
+                        status: newStatus
+                      };
+                      handleUpdateVehicle(updatedVehicle);
+                    }}
+                    className={`w-28 px-3 py-1 rounded-full text-xs font-medium transition-colors duration-200 cursor-pointer ${
+                      vehicle.status === 'Aktif' 
+                        ? 'bg-green-900 text-green-300 hover:bg-green-800' 
+                        : vehicle.status === 'Kademe'
+                        ? 'bg-yellow-900 text-yellow-300 hover:bg-yellow-800'
+                        : 'bg-red-900 text-red-300 hover:bg-red-800'
+                    }`}
+                  >
                     {vehicle.status}
-                  </span>
+                  </button>
                 </td>
                 <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-300">
                   <div className="flex space-x-2">
@@ -570,12 +882,24 @@ export const Vehicles: React.FC = () => {
                       onClick={() => {
                         setSelectedVehicle(vehicle);
                         setShowVehicleDetail(true);
-                        setActiveTab('bakim');
+                        setActiveTab('bakim-gecmisi');
                       }}
                       className="text-blue-400 hover:text-blue-300 flex items-center"
                     >
                       <Wrench className="w-5 h-5 mr-1" />
                       Bakım Geçmişi
+                    </button>
+                    <button
+                      onClick={() => {
+                        setSelectedVehicle(vehicle);
+                        setMaintenanceDate(vehicle.lastMaintenance || '');
+                        setTechnicalInspectionDate(vehicle.technicalInspectionDate || '');
+                        setShowMaintenanceModal(true);
+                      }}
+                      className="text-blue-400 hover:text-blue-300 relative group"
+                    >
+                      <Calendar className="w-5 h-5" />
+                      <PenSquare className="w-3 h-3 absolute -top-1 -right-1 text-blue-400 group-hover:text-blue-300" />
                     </button>
                     <button
                       onClick={() => handleDeleteVehicle(vehicle.id)}
@@ -590,6 +914,242 @@ export const Vehicles: React.FC = () => {
           </tbody>
         </table>
       </div>
+
+      {selectedVehicle && !showVehicleDetail && (
+        <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50">
+          <div className="bg-[#2D333B] rounded-lg p-6 w-full max-w-md">
+            <h2 className="text-xl font-semibold text-white mb-4">Araç Düzenle</h2>
+            <div className="space-y-4">
+              <div>
+                <label className="block text-sm font-medium text-gray-300 mb-1">Plaka</label>
+                <div className="text-white">{selectedVehicle.plate}</div>
+              </div>
+              
+              <div>
+                <label className="block text-sm font-medium text-gray-300 mb-1">Model</label>
+                <div className="text-white">{selectedVehicle.model}</div>
+              </div>
+
+              <div>
+                <label className="block text-sm font-medium text-gray-300 mb-1">Tip</label>
+                <div className="text-white">{selectedVehicle.type}</div>
+              </div>
+
+              <div>
+                <label className="block text-sm font-medium text-gray-300 mb-1">Yıl</label>
+                <div className="text-white">{selectedVehicle.year}</div>
+              </div>
+
+              <div>
+                <label className="block text-sm font-medium text-gray-300 mb-1">Şasi No</label>
+                <div className="text-white">{selectedVehicle.chassisNumber}</div>
+              </div>
+
+              <div>
+                <label className="block text-sm font-medium text-gray-300 mb-1">Son Bakım Tarihi</label>
+                <input
+                  type="date"
+                  value={selectedVehicle.lastMaintenance}
+                  onChange={(e) => {
+                    const nextMaintenanceDate = new Date(e.target.value);
+                    nextMaintenanceDate.setMonth(nextMaintenanceDate.getMonth() + 6);
+                    
+                    setSelectedVehicle({
+                      ...selectedVehicle,
+                      lastMaintenance: e.target.value,
+                      nextMaintenance: nextMaintenanceDate.toISOString().split('T')[0]
+                    });
+                  }}
+                  className="w-full px-3 py-2 bg-[#1C2128] border border-gray-700 rounded-lg text-white"
+                />
+              </div>
+
+              <div>
+                <label className="block text-sm font-medium text-gray-300 mb-1">Sonraki Bakım Tarihi</label>
+                <div className="text-white">
+                  {new Date(selectedVehicle.nextMaintenance).toLocaleDateString('tr-TR')}
+                </div>
+              </div>
+
+              <div>
+                <label className="block text-sm font-medium text-gray-300 mb-1">Son Fenni Muayene Tarihi</label>
+                <input
+                  type="date"
+                  value={selectedVehicle.lastInspection}
+                  onChange={(e) => {
+                    const nextInspectionDate = new Date(e.target.value);
+                    nextInspectionDate.setFullYear(nextInspectionDate.getFullYear() + 1);
+                    
+                    setSelectedVehicle({
+                      ...selectedVehicle,
+                      lastInspection: e.target.value,
+                      nextInspection: nextInspectionDate.toISOString().split('T')[0]
+                    });
+                  }}
+                  className="w-full px-3 py-2 bg-[#1C2128] border border-gray-700 rounded-lg text-white"
+                />
+              </div>
+
+              <div>
+                <label className="block text-sm font-medium text-gray-300 mb-1">Sonraki Fenni Muayene Tarihi</label>
+                <div className="text-white">
+                  {new Date(selectedVehicle.nextInspection).toLocaleDateString('tr-TR')}
+                </div>
+              </div>
+
+              <div>
+                <label className="block text-sm font-medium text-gray-300 mb-1">Durum</label>
+                <select
+                  value={selectedVehicle.status}
+                  onChange={(e) => setSelectedVehicle({
+                    ...selectedVehicle,
+                    status: e.target.value as Vehicle['status']
+                  })}
+                  className="w-full px-3 py-2 bg-[#1C2128] border border-gray-700 rounded-lg text-white"
+                >
+                  <option value="Aktif">Aktif</option>
+                  <option value="Kademe">Kademe</option>
+                  <option value="Yetkili Servis">Yetkili Servis</option>
+                </select>
+              </div>
+            </div>
+
+            <div className="flex justify-end space-x-4 mt-6">
+              <button
+                onClick={() => setSelectedVehicle(null)}
+                className="bg-gray-600 hover:bg-gray-700 text-white px-4 py-2 rounded-lg text-sm"
+              >
+                İptal
+              </button>
+              <button
+                onClick={() => handleUpdateVehicle(selectedVehicle)}
+                className="bg-blue-500 hover:bg-blue-600 text-white px-4 py-2 rounded-lg text-sm"
+              >
+                Güncelle
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* Bakım Tarihi Düzenleme Modalı */}
+      {showMaintenanceModal && selectedVehicle && (
+        <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50">
+          <div className="bg-[#1C2128] rounded-lg p-6 max-w-md w-full mx-4">
+            <h3 className="text-lg font-medium text-white mb-4">Bakım Tarihlerini Güncelle</h3>
+            <div className="space-y-4">
+              <div>
+                <label className="block text-sm font-medium text-gray-300 mb-2">Son Bakım Tarihi</label>
+                <input
+                  type="date"
+                  value={maintenanceDate}
+                  onChange={(e) => setMaintenanceDate(e.target.value)}
+                  className="w-full px-3 py-2 bg-[#2D333B] border border-gray-700 rounded-lg text-white"
+                />
+              </div>
+              <div>
+                <label className="block text-sm font-medium text-gray-300 mb-2">Fenni Muayene Tarihi</label>
+                <input
+                  type="date"
+                  value={technicalInspectionDate}
+                  onChange={(e) => setTechnicalInspectionDate(e.target.value)}
+                  className="w-full px-3 py-2 bg-[#2D333B] border border-gray-700 rounded-lg text-white"
+                />
+              </div>
+              <div className="flex justify-end space-x-3">
+                <button
+                  onClick={() => setShowMaintenanceModal(false)}
+                  className="px-4 py-2 bg-gray-600 hover:bg-gray-700 text-white rounded-lg text-sm"
+                >
+                  İptal
+                </button>
+                <button
+                  onClick={handleMaintenanceUpdate}
+                  className="px-4 py-2 bg-blue-500 hover:bg-blue-600 text-white rounded-lg text-sm"
+                >
+                  Güncelle
+                </button>
+              </div>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* Lastik Atama Modalı */}
+      {showTireAssignModal && selectedVehicle && (
+        <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50">
+          <div className="bg-[#1C2128] rounded-lg p-6 max-w-md w-full mx-4">
+            <h3 className="text-lg font-medium text-white mb-4">
+              {selectedVehicle.plate} - Lastik Ata
+            </h3>
+            <div className="space-y-4">
+              <div>
+                <label className="block text-sm font-medium text-gray-300 mb-2">Lastik</label>
+                <select
+                  value={selectedTireId}
+                  onChange={(e) => setSelectedTireId(e.target.value)}
+                  className="w-full px-3 py-2 bg-[#2D333B] border border-gray-700 rounded-lg text-white"
+                >
+                  <option value="">Lastik Seçin</option>
+                  {availableTires.map(tire => (
+                    <option key={tire.id} value={tire.id}>
+                      {tire.brand} {tire.pattern} - {tire.serialNumber}
+                    </option>
+                  ))}
+                </select>
+              </div>
+
+              <div>
+                <label className="block text-sm font-medium text-gray-300 mb-2">Pozisyon</label>
+                <select
+                  value={tirePosition}
+                  onChange={(e) => setTirePosition(e.target.value)}
+                  className="w-full px-3 py-2 bg-[#2D333B] border border-gray-700 rounded-lg text-white"
+                >
+                  <option value="">Pozisyon Seçin</option>
+                  <option value="ÖnSol">Ön Sol</option>
+                  <option value="ÖnSağ">Ön Sağ</option>
+                  <option value="ArkaSol1">Arka Sol 1</option>
+                  <option value="ArkaSağ1">Arka Sağ 1</option>
+                  <option value="ArkaSol2">Arka Sol 2</option>
+                  <option value="ArkaSağ2">Arka Sağ 2</option>
+                </select>
+              </div>
+
+              <div>
+                <label className="block text-sm font-medium text-gray-300 mb-2">Takılma Kilometresi</label>
+                <input
+                  type="number"
+                  value={installationMileage}
+                  onChange={(e) => setInstallationMileage(Number(e.target.value))}
+                  className="w-full px-3 py-2 bg-[#2D333B] border border-gray-700 rounded-lg text-white"
+                  placeholder="Örn: 50000"
+                />
+              </div>
+
+              <div className="flex justify-end space-x-3">
+                <button
+                  onClick={() => {
+                    setShowTireAssignModal(false);
+                    setSelectedTireId('');
+                    setTirePosition('');
+                    setInstallationMileage(0);
+                  }}
+                  className="px-4 py-2 bg-gray-600 hover:bg-gray-700 text-white rounded-lg text-sm"
+                >
+                  İptal
+                </button>
+                <button
+                  onClick={handleTireAssignment}
+                  className="px-4 py-2 bg-blue-500 hover:bg-blue-600 text-white rounded-lg text-sm"
+                >
+                  Lastik Ata
+                </button>
+              </div>
+            </div>
+          </div>
+        </div>
+      )}
     </div>
   );
 }; 

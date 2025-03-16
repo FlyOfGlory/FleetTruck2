@@ -7,34 +7,21 @@ interface VehicleFormProps {
 }
 
 const vehicleTypes: VehicleType[] = [
-  'Damperli Kamyon',
-  'Beton Mikseri',
-  'Beton Pompası',
-  'Çekici Kamyon',
-  'Römork Damperli',
-  'Yarı Römork Damperli',
-  'Yarı Römork Lowbed',
-  'Silobas',
-  'Su Tankeri',
-  'Ekskavatör Paletli',
-  'Kaya Delici Paletli',
-  'Yükleyici Lastikli',
-  'Traktör',
-  'Forklift',
-  'Kamyonet Pikap',
-  'Kamyonet',
-  'Kamyonet (BB Van)',
+  'Kamyon',
+  'Çekici',
+  'Tır',
+  'Römork',
+  'Dorse',
   'Minibüs',
-  'Otomobil',
-  'Otomobil (AF Çok Amaçlı)',
-  'Motosiklet'
+  'Otobüs',
+  'Pickup'
 ];
 
 export const VehicleForm: React.FC<VehicleFormProps> = ({ onSubmit, onCancel }) => {
   const [formData, setFormData] = useState<VehicleFormData>({
     plate: '',
     model: '',
-    type: 'Damperli Kamyon',
+    type: 'Çekici',
     year: '',
     chassisNumber: '',
     status: 'Aktif'

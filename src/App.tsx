@@ -25,7 +25,9 @@ import { ExcelUpload } from "./pages/ExcelUpload";
 import { AuthProvider } from './contexts/AuthContext';
 import { ToastContainer } from 'react-toastify';
 import 'react-toastify/dist/ReactToastify.css';
-import { VehicleTiresPage } from './pages/VehicleTiresPage';
+import { VehicleTires } from './pages/VehicleTires';
+import { AuditLogs } from './pages/AuditLogs';
+import { auditLogService } from './services/auditLogService';
 
 const CURRENT_USER_KEY = 'fleet-management-current-user';
 const USERS_STORAGE_KEY = 'fleet-management-users';
@@ -135,12 +137,25 @@ const App: React.FC = () => {
     if (user) {
       setCurrentUser(user);
       localStorage.setItem(CURRENT_USER_KEY, JSON.stringify(user));
+
+      // Denetim kaydı oluştur
+      auditLogService.createLog(user, 'login', {
+        description: `${user.fullName} sisteme giriş yaptı.`
+      });
+
       return true;
     }
     return false;
   };
 
   const handleLogout = () => {
+    if (currentUser) {
+      // Denetim kaydı oluştur
+      auditLogService.createLog(currentUser, 'logout', {
+        description: `${currentUser.fullName} sistemden çıkış yaptı.`
+      });
+    }
+
     localStorage.removeItem(CURRENT_USER_KEY);
     setCurrentUser(null);
   };
@@ -160,44 +175,54 @@ const App: React.FC = () => {
       <AuthProvider>
         <Router>
           <Layout currentUser={currentUser} onLogout={handleLogout}>
-            <div className="min-h-screen bg-[#22272E]">
-              <Sidebar />
-              <Header currentUser={currentUser} onLogout={handleLogout} />
-              <div className="ml-64 pt-16 p-6">
-                <Routes>
-                  <Route path="/" element={<Dashboard />} />
-                  <Route path="vehicles" element={<Vehicles />} />
-                  <Route path="vehicles/new" element={<VehicleNew />} />
-                  <Route path="vehicles/:id" element={<VehicleEdit />} />
-                  <Route path="vehicles/:id/tires" element={<VehicleTiresPage />} />
-                  <Route path="tires" element={<Tires />} />
-                  <Route path="maintenance" element={<Maintenance />} />
-                  <Route path="inspections" element={<Inspections />} />
-                  <Route path="reports" element={<Reports />} />
-                  <Route path="calendar" element={<Calendar />} />
-                  <Route path="coating" element={<Coating />} />
-                  <Route path="external" element={<External />} />
-                  <Route path="repair" element={<Repair />} />
-                  <Route path="scrap" element={<Scrap />} />
-                  <Route path="sold" element={<Sold />} />
-                  <Route 
-                    path="users" 
-                    element={
-                      currentUser.role === 'admin' 
-                        ? <Users /> 
-                        : <Navigate to="/" replace />
-                    } 
-                  />
-                  <Route 
-                    path="excel-upload" 
-                    element={
-                      currentUser.role === 'admin' 
-                        ? <ExcelUpload /> 
-                        : <Navigate to="/" replace />
-                    } 
-                  />
-                  <Route path="*" element={<Navigate to="/" replace />} />
-                </Routes>
+            <div className="flex h-screen bg-[#22272E]">
+              <Sidebar title="Cihan Beton Araç Takip Sistemi V.0.1" />
+              <div className="flex-1 overflow-auto">
+                <Header currentUser={currentUser} onLogout={handleLogout} />
+                <div className="ml-64 pt-16 p-6">
+                  <Routes>
+                    <Route path="/" element={<Dashboard />} />
+                    <Route path="vehicles" element={<Vehicles />} />
+                    <Route path="vehicles/new" element={<VehicleNew />} />
+                    <Route path="vehicles/:id" element={<VehicleEdit />} />
+                    <Route path="vehicles/:id/tires" element={<VehicleTires />} />
+                    <Route path="tires" element={<Tires />} />
+                    <Route path="maintenance" element={<Maintenance />} />
+                    <Route path="inspections" element={<Inspections />} />
+                    <Route path="reports" element={<Reports />} />
+                    <Route path="calendar" element={<Calendar />} />
+                    <Route path="coating" element={<Coating />} />
+                    <Route path="external" element={<External />} />
+                    <Route path="repair" element={<Repair />} />
+                    <Route path="scrap" element={<Scrap />} />
+                    <Route path="sold" element={<Sold />} />
+                    <Route 
+                      path="users" 
+                      element={
+                        currentUser.role === 'admin' 
+                          ? <Users /> 
+                          : <Navigate to="/" replace />
+                      } 
+                    />
+                    <Route 
+                      path="excel-upload" 
+                      element={
+                        currentUser.role === 'admin' 
+                          ? <ExcelUpload /> 
+                          : <Navigate to="/" replace />
+                      } 
+                    />
+                    <Route 
+                      path="audit-logs" 
+                      element={
+                        currentUser.role === 'admin' 
+                          ? <AuditLogs /> 
+                          : <Navigate to="/" replace />
+                      } 
+                    />
+                    <Route path="*" element={<Navigate to="/" replace />} />
+                  </Routes>
+                </div>
               </div>
             </div>
             <ToastContainer

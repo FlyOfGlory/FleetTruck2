@@ -1,9 +1,5 @@
 import React, { createContext, useContext, useState, useEffect } from 'react';
-
-interface User {
-  username: string;
-  isAdmin: boolean;
-}
+import { User } from '../types/User';
 
 interface AuthContextType {
   currentUser: User | null;
@@ -33,13 +29,14 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
   }, []);
 
   const login = (username: string, password: string) => {
-    // Basit doğrulama - gerçek uygulamada API çağrısı yapılmalı
-    const user: User = {
-      username,
-      isAdmin: username === 'admin', // Örnek: admin kullanıcısı her zaman admin olsun
-    };
-    setCurrentUser(user);
-    localStorage.setItem('currentUser', JSON.stringify(user));
+    // Kullanıcıları localStorage'dan al
+    const users = JSON.parse(localStorage.getItem('fleet-management-users') || '[]') as User[];
+    const user = users.find(u => u.username === username && u.password === password);
+    
+    if (user) {
+      setCurrentUser(user);
+      localStorage.setItem('currentUser', JSON.stringify(user));
+    }
   };
 
   const logout = () => {
@@ -49,7 +46,7 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
 
   const value = {
     currentUser,
-    isAdmin: currentUser?.isAdmin || false,
+    isAdmin: currentUser?.role === 'admin',
     login,
     logout,
   };

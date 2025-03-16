@@ -1,17 +1,11 @@
-export type VehicleType = 'Damperli Kamyon' | 'Çekici' | 'Tır' | 'Kamyonet' | 'Minibüs' | 'Otobüs';
-export type VehicleStatus = 'Aktif' | 'Serviste' | 'Pasif';
-export type TirePosition = 
-  | 'Ön Sol' 
-  | 'Ön Sağ'
-  | 'Arka Sol 1'
-  | 'Arka Sağ 1'
-  | 'Arka Sol 2'
-  | 'Arka Sağ 2'
-  | 'Arka Sol 3'
-  | 'Arka Sağ 3'
-  | 'Yedek';
+export type VehicleType = 'Kamyon' | 'Çekici' | 'Tır' | 'Römork' | 'Dorse' | 'Minibüs' | 'Otobüs' | 'Pickup';
 
-export type TireStatus = 'Depoda' | 'Takılı' | 'Hurdada';
+export type VehicleStatus = 'Aktif' | 'Kademe' | 'Yetkili Servis';
+
+export type TireLocation = 'Depo' | 'Takılı' | 'Hurda';
+export type TirePosition = 'ÖnSol' | 'ÖnSağ' | 'ArkaSol1' | 'ArkaSağ1' | 'ArkaSol2' | 'ArkaSağ2';
+
+export type TireStatus = 'Yeni' | 'Kullanımda' | 'Değişmeli';
 
 export type TireBrand = 
   | 'Michelin'
@@ -38,62 +32,60 @@ export type TireBrand =
 export interface Tire {
   id: string;
   brand: string;
-  model: string;
-  size: string;
+  pattern: string;
   serialNumber: string;
-  position?: TirePosition;
-  status: TireStatus;
-  installationDate?: string;
-  mileageAtInstallation?: number;
+  size: string;
+  dot: string;
   purchaseDate: string;
-  price: number;
+  location: TireLocation;
+  position?: TirePosition;
+  installationDate?: string;
+  installationMileage?: number;
+  removalDate?: string;
+  removalMileage?: number;
+  status: 'Yeni' | 'Kullanılmış' | 'Hurda';
 }
 
-export type MaintenanceType = 'Periyodik Bakım' | 'Arıza' | 'Kaza' | 'Lastik' | 'Diğer';
+export type MaintenanceType = 'Periyodik Bakım' | 'Arıza' | 'Kaza' | 'Diğer';
 
 export interface MaintenanceRecord {
   id: string;
-  type: MaintenanceType;
   date: string;
-  mileage: number;
+  type: MaintenanceType;
+  mileage?: number;
   description: string;
   cost: number;
-  nextMaintenanceDate?: string;
-  nextMaintenanceMileage?: number;
-}
-
-export interface MileageRecord {
-  id: string;
-  vehicleId: string;
-  date: string;
-  mileage: number;
-  previousMileage: number;
-  dailyDistance: number;
+  location: string;
+  technician: string;
+  parts: string[];
+  nextMaintenanceMileage: number;
+  nextMaintenanceDate: string;
 }
 
 export interface Vehicle {
   id: string;
   plate: string;
-  type: VehicleType;
   brand: string;
   model: string;
   year: number;
-  status: VehicleStatus;
   mileage: number;
-  maintenanceRecords: MaintenanceRecord[];
-  tires: Tire[];
-  lastInspectionDate?: string;
-  nextInspectionDate?: string;
+  lastMaintenance?: {
+    date: string;
+    mileage: number;
+  };
+  technicalInspectionDate?: string;
+  tires?: {
+    id: string;
+    position: string;
+    installationDate: string;
+    installationMileage: number;
+  }[];
 }
 
 export interface VehicleFormData {
   plate: string;
-  type: VehicleType;
-  brand: string;
   model: string;
-  year: number;
-  status: VehicleStatus;
-  mileage: number;
-  lastInspectionDate?: string;
-  nextInspectionDate?: string;
+  type: string;
+  year: string;
+  chassisNumber: string;
 } 

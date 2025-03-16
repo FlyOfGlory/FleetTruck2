@@ -1,82 +1,62 @@
 import React from 'react';
 import { NavLink } from 'react-router-dom';
+import { Truck, Disc, Wrench } from 'lucide-react';
 import { useAuth } from '../contexts/AuthContext';
 
-export const Sidebar: React.FC = () => {
+interface SidebarProps {
+  title: string;
+}
+
+export const Sidebar: React.FC<SidebarProps> = ({ title }) => {
   const { isAdmin } = useAuth();
 
   return (
-    <div className="bg-white h-full w-64 flex flex-col">
-      <div className="flex-1 overflow-y-auto">
-        <NavLink
-          to="/"
-          className={({ isActive }) =>
-            `flex items-center px-4 py-2 mt-2 text-gray-600 ${
-              isActive ? 'bg-gray-100' : 'hover:bg-gray-50'
-            }`
-          }
-        >
-          <span className="mx-4">Ana Sayfa</span>
-        </NavLink>
-
-        <NavLink
-          to="/vehicles"
-          className={({ isActive }) =>
-            `flex items-center px-4 py-2 mt-2 text-gray-600 ${
-              isActive ? 'bg-gray-100' : 'hover:bg-gray-50'
-            }`
-          }
-        >
-          <span className="mx-4">Araçlar</span>
-        </NavLink>
-
-        <NavLink
-          to="/maintenance"
-          className={({ isActive }) =>
-            `flex items-center px-4 py-2 mt-2 text-gray-600 ${
-              isActive ? 'bg-gray-100' : 'hover:bg-gray-50'
-            }`
-          }
-        >
-          <span className="mx-4">Bakım</span>
-        </NavLink>
-
-        <NavLink
-          to="/tires"
-          className={({ isActive }) =>
-            `flex items-center px-4 py-2 mt-2 text-gray-600 ${
-              isActive ? 'bg-gray-100' : 'hover:bg-gray-50'
-            }`
-          }
-        >
-          <span className="mx-4">Lastikler</span>
-        </NavLink>
-
-        {isAdmin && (
+    <div className="fixed inset-y-0 left-0 w-64 bg-[#1C2128] border-r border-gray-700">
+      <div className="flex flex-col h-full">
+        <div className="flex items-center justify-center h-16 px-4 bg-[#2D333B] border-b border-gray-700">
+          <h1 className="text-lg font-semibold text-white text-center">{title}</h1>
+        </div>
+        <nav className="flex-1 px-4 py-4 space-y-2">
           <NavLink
-            to="/excel-upload"
+            to="/vehicles"
             className={({ isActive }) =>
-              `flex items-center px-4 py-2 mt-2 text-gray-600 ${
-                isActive ? 'bg-gray-100' : 'hover:bg-gray-50'
+              `flex items-center px-4 py-2 text-sm font-medium rounded-lg ${
+                isActive
+                  ? 'bg-[#2D333B] text-white'
+                  : 'text-gray-300 hover:bg-[#2D333B] hover:text-white'
               }`
             }
           >
-            <span className="mx-4">Kilometre Verisi Yükle</span>
+            <Truck className="w-5 h-5 mr-3" />
+            Araçlar
           </NavLink>
-        )}
-
-        {isAdmin && (
           <NavLink
-            to="/users"
+            to="/tires"
             className={({ isActive }) =>
-              `flex items-center px-4 py-2 mt-2 text-gray-600 ${
-                isActive ? 'bg-gray-100' : 'hover:bg-gray-50'
+              `flex items-center px-4 py-2 text-sm font-medium rounded-lg ${
+                isActive
+                  ? 'bg-[#2D333B] text-white'
+                  : 'text-gray-300 hover:bg-[#2D333B] hover:text-white'
               }`
             }
           >
-            <span className="mx-4">Kullanıcılar</span>
+            <Disc className="w-5 h-5 mr-3" />
+            Lastikler
           </NavLink>
-        )}
+          <NavLink
+            to="/maintenance"
+            className={({ isActive }) =>
+              `flex items-center px-4 py-2 text-sm font-medium rounded-lg ${
+                isActive
+                  ? 'bg-[#2D333B] text-white'
+                  : 'text-gray-300 hover:bg-[#2D333B] hover:text-white'
+              }`
+            }
+          >
+            <Wrench className="w-5 h-5 mr-3" />
+            Bakımlar
+          </NavLink>
+        </nav>
       </div>
     </div>
   );
