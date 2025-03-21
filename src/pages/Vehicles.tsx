@@ -3,8 +3,10 @@ import { Truck, Wrench, FileText, Calendar, Upload, Plus, ArrowLeft, Edit2, Tras
 import { Vehicle, VehicleFormData, Tire, MaintenanceRecord, MaintenanceType, TireLocation } from '../types/Vehicle';
 import { VehicleForm } from '../components/vehicles/VehicleForm';
 import { VehicleImport } from '../components/vehicles/VehicleImport';
+import { VehicleList } from '../components/vehicles/VehicleList';
 import { v4 as uuidv4 } from 'uuid';
 import { useNavigate, Link } from 'react-router-dom';
+import { vehicleService } from '../services/vehicleService';
 
 const VEHICLES_STORAGE_KEY = 'fleet-management-vehicles';
 
@@ -191,14 +193,16 @@ export const Vehicles: React.FC = () => {
       model: data.model.split(' ').slice(1).join(' '),
       year: parseInt(data.year),
       mileage: 0,
-      lastMaintenance: today.toISOString().split('T')[0],
-      nextMaintenance: nextMaintenanceDate.toISOString().split('T')[0],
-      lastInspection: today.toISOString().split('T')[0],
-      nextInspection: nextInspectionDate.toISOString().split('T')[0],
-      technicalInspectionDate: nextInspectionDate.toISOString().split('T')[0],
-      status: 'Aktif',
+      facility: 'İZMİR YOLU', // Varsayılan tesis
+      lastMaintenance: today,
+      technicalInspectionDate: today,
+      technicalInspectionEndDate: nextInspectionDate,
       tires: [],
-      maintenanceHistory: []
+      tireStock: 0,
+      tireChangeCount: 0,
+      maintenanceHistory: [],
+      createdAt: today,
+      updatedAt: today
     };
     const updatedVehicles = [...vehicles, newVehicle];
     setVehicles(updatedVehicles);
@@ -439,6 +443,16 @@ export const Vehicles: React.FC = () => {
     setInstallationMileage(0);
   };
 
+  const handleUpdateFacility = async (vehicleId: string, facility: Facility) => {
+    const updatedVehicles = vehicles.map(vehicle =>
+      vehicle.id === vehicleId
+        ? { ...vehicle, facility, updatedAt: new Date() }
+        : vehicle
+    );
+    setVehicles(updatedVehicles);
+    localStorage.setItem(VEHICLES_STORAGE_KEY, JSON.stringify(updatedVehicles));
+  };
+
   if (loading) {
     return (
       <div className="flex items-center justify-center min-h-screen">
@@ -649,7 +663,7 @@ export const Vehicles: React.FC = () => {
                           {record.mileage ? record.mileage.toLocaleString() : '0'} km
                         </td>
                         <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-300">
-                          {record.nextMaintenanceMileage.toLocaleString()} km / {new Date(record.nextMaintenanceDate).toLocaleDateString('tr-TR')}
+                          {record.nextMaintenanceMileage ? record.nextMaintenanceMileage.toLocaleString() : '0'} km / {record.nextMaintenanceDate ? new Date(record.nextMaintenanceDate).toLocaleDateString('tr-TR') : '-'}
                         </td>
                         <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-300">
                           <button
@@ -714,48 +728,54 @@ export const Vehicles: React.FC = () => {
   }
 
   return (
-    <div className="p-6">
-      <div className="flex justify-between items-center mb-6">
+    <div className="p-0" style={{ transform: 'translateX(-200px)' }}>
+      {error && (
+        <div className="mb-2 p-2 bg-red-900 text-red-300 rounded-lg">
+          {error}
+        </div>
+      )}
+
+      <div className="flex justify-between items-center mb-4">
         <h1 className="text-2xl font-bold text-white">Araçlar</h1>
-        <div className="flex items-center space-x-4">
+        <div className="flex items-center space-x-2">
           {notificationButton}
           <button
             onClick={() => setShowForm(true)}
-            className="bg-blue-500 hover:bg-blue-600 text-white px-4 py-2 rounded-lg flex items-center"
+            className="bg-blue-500 hover:bg-blue-600 text-white px-3 py-1.5 rounded-lg flex items-center text-sm"
           >
-            <Plus className="w-5 h-5 mr-2" />
+            <Plus className="w-4 h-4 mr-1" />
             Yeni Araç
           </button>
           <button
             onClick={() => setShowImport(true)}
-            className="bg-green-500 hover:bg-green-600 text-white px-4 py-2 rounded-lg flex items-center"
+            className="bg-green-500 hover:bg-green-600 text-white px-3 py-1.5 rounded-lg flex items-center text-sm"
           >
-            <Upload className="w-5 h-5 mr-2" />
+            <Upload className="w-4 h-4 mr-1" />
             Excel'den Yükle
           </button>
         </div>
       </div>
 
-      <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-6">
+      <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-2">
         {stats.map((stat, index) => (
           <div
             key={index}
-            className="bg-[#2D333B] rounded-lg p-6 shadow-lg"
+            className="bg-[#2D333B] rounded-lg p-3 shadow-lg"
           >
             <div className="flex items-center justify-between">
               <div>
                 <p className="text-sm font-medium text-gray-400">{stat.title}</p>
-                <p className="mt-2 text-3xl font-semibold text-white">{stat.value}</p>
+                <p className="mt-1 text-2xl font-semibold text-white">{stat.value}</p>
               </div>
-              <div className="bg-[#1C2128] rounded-lg p-3">
+              <div className="bg-[#1C2128] rounded-lg p-2">
                 {stat.icon}
               </div>
             </div>
-            <div className="mt-2">
-              <p className="text-sm text-gray-400">{stat.description}</p>
+            <div className="mt-1">
+              <p className="text-xs text-gray-400">{stat.description}</p>
             </div>
-            <div className="mt-4">
-              <span className={`text-sm ${
+            <div className="mt-1">
+              <span className={`text-xs ${
                 stat.changeType === 'increase' ? 'text-green-500' : 'text-red-500'
               }`}>
                 {stat.change}
@@ -765,17 +785,17 @@ export const Vehicles: React.FC = () => {
         ))}
       </div>
 
-      <div className="bg-[#2D333B] rounded-lg shadow-lg overflow-hidden">
-        <div className="px-6 py-4 border-b border-[#1C2128]">
+      <div className="bg-[#2D333B] rounded-lg shadow-lg overflow-hidden mt-2">
+        <div className="px-3 py-2 border-b border-[#1C2128]">
           <div className="flex justify-between items-center">
-            <h3 className="text-lg font-medium text-white">Araç Listesi</h3>
-            <div className="flex items-center space-x-4">
+            <h3 className="text-base font-medium text-white">Araç Listesi</h3>
+            <div className="flex items-center space-x-2">
               <input
                 type="text"
                 placeholder="Plaka ile filtrele..."
                 value={plateFilter}
                 onChange={(e) => setPlateFilter(e.target.value)}
-                className="px-3 py-2 bg-[#1C2128] border border-gray-700 rounded-lg text-white text-sm focus:outline-none focus:ring-2 focus:ring-blue-500"
+                className="px-2 py-1 bg-[#1C2128] border border-gray-700 rounded text-white text-sm focus:outline-none focus:ring-1 focus:ring-blue-500"
               />
             </div>
           </div>
@@ -783,39 +803,42 @@ export const Vehicles: React.FC = () => {
         <table className="min-w-full divide-y divide-gray-700">
           <thead className="bg-[#1C2128]">
             <tr>
-              <th className="px-6 py-3 text-left text-xs font-medium text-gray-300 uppercase tracking-wider">
+              <th className="px-3 py-2 text-left text-xs font-medium text-gray-300 uppercase tracking-wider w-[10%]">
                 Plaka
               </th>
-              <th className="px-6 py-3 text-left text-xs font-medium text-gray-300 uppercase tracking-wider">
+              <th className="px-3 py-2 text-left text-xs font-medium text-gray-300 uppercase tracking-wider w-[12%]">
                 Model
               </th>
-              <th className="px-6 py-3 text-left text-xs font-medium text-gray-300 uppercase tracking-wider">
+              <th className="px-3 py-2 text-left text-xs font-medium text-gray-300 uppercase tracking-wider w-[8%]">
                 Tip
               </th>
-              <th className="px-6 py-3 text-left text-xs font-medium text-gray-300 uppercase tracking-wider">
+              <th className="px-3 py-2 text-left text-xs font-medium text-gray-300 uppercase tracking-wider w-[15%]">
+                Tesis
+              </th>
+              <th className="px-3 py-2 text-left text-xs font-medium text-gray-300 uppercase tracking-wider w-[6%]">
                 Yıl
               </th>
-              <th className="px-6 py-3 text-left text-xs font-medium text-gray-300 uppercase tracking-wider">
+              <th className="px-3 py-2 text-left text-xs font-medium text-gray-300 uppercase tracking-wider w-[15%]">
                 Şasi No
               </th>
-              <th className="px-6 py-3 text-left text-xs font-medium text-gray-300 uppercase tracking-wider">
+              <th className="px-3 py-2 text-left text-xs font-medium text-gray-300 uppercase tracking-wider w-[10%]">
                 Son Bakım
               </th>
-              <th className="px-6 py-3 text-left text-xs font-medium text-gray-300 uppercase tracking-wider">
+              <th className="px-3 py-2 text-left text-xs font-medium text-gray-300 uppercase tracking-wider w-[12%]">
                 Fenni Muayene
               </th>
-              <th className="px-6 py-3 text-left text-xs font-medium text-gray-300 uppercase tracking-wider">
+              <th className="px-3 py-2 text-left text-xs font-medium text-gray-300 uppercase tracking-wider w-[6%]">
                 Durum
               </th>
-              <th className="px-6 py-3 text-left text-xs font-medium text-gray-300 uppercase tracking-wider">
+              <th className="px-3 py-2 text-left text-xs font-medium text-gray-300 uppercase tracking-wider w-[6%]">
                 İşlemler
               </th>
             </tr>
           </thead>
           <tbody className="bg-[#2D333B] divide-y divide-gray-700">
             {filteredVehicles.map((vehicle) => (
-              <tr key={vehicle.id}>
-                <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-300">
+              <tr key={vehicle.id} className="text-xs">
+                <td className="px-3 py-2 whitespace-nowrap text-gray-300">
                   <button
                     onClick={() => {
                       navigate(`/vehicles/${vehicle.id}/tires`);
@@ -825,32 +848,54 @@ export const Vehicles: React.FC = () => {
                     {vehicle.plate}
                   </button>
                 </td>
-                <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-300">
+                <td className="px-3 py-2 whitespace-nowrap text-gray-300">
                   {vehicle.model}
                 </td>
-                <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-300">
+                <td className="px-3 py-2 whitespace-nowrap text-gray-300">
                   {vehicle.type}
                 </td>
-                <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-300">
+                <td className="px-3 py-2 whitespace-nowrap text-gray-300">
+                  <select
+                    value={vehicle.facility || ''}
+                    onChange={(e) => handleUpdateFacility(vehicle.id, e.target.value as Facility)}
+                    className="w-full px-2 py-1 bg-[#1C2128] border border-gray-700 rounded text-white text-xs"
+                  >
+                    <option value="">Tesis Seçin</option>
+                    <option value="İZMİR YOLU">İZMİR YOLU</option>
+                    <option value="PANAYIR">PANAYIR</option>
+                    <option value="İNEGÖL">İNEGÖL</option>
+                    <option value="PAMUKOVA">PAMUKOVA</option>
+                    <option value="TEKNOSAB">TEKNOSAB</option>
+                    <option value="TOKİ">TOKİ</option>
+                    <option value="YENİ KADEME">YENİ KADEME</option>
+                    <option value="HAMZABEY (İNEGÖL) OSB">HAMZABEY (İNEGÖL) OSB</option>
+                    <option value="GÜRSU TOKİ">GÜRSU TOKİ</option>
+                    <option value="DEMİRTAŞ (AVDANCIK)">DEMİRTAŞ (AVDANCIK)</option>
+                    <option value="MEKECE-1">MEKECE-1</option>
+                    <option value="MEKECE-2">MEKECE-2</option>
+                    <option value="KAYAPA">KAYAPA</option>
+                    <option value="İNEGÖL CİHANTAŞ">İNEGÖL CİHANTAŞ</option>
+                  </select>
+                </td>
+                <td className="px-3 py-2 whitespace-nowrap text-gray-300">
                   {vehicle.year}
                 </td>
-                <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-300">
+                <td className="px-3 py-2 whitespace-nowrap text-gray-300">
                   {vehicle.chassisNumber}
                 </td>
-                <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-300">
+                <td className="px-3 py-2 whitespace-nowrap text-gray-300">
                   {vehicle.lastMaintenance}
                 </td>
-                <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-300">
+                <td className="px-3 py-2 whitespace-nowrap text-gray-300">
                   {new Date(vehicle.lastInspection).toLocaleDateString('tr-TR')} - {new Date(vehicle.nextInspection).toLocaleDateString('tr-TR')}
                 </td>
-                <td className="px-6 py-4 whitespace-nowrap text-sm">
+                <td className="px-3 py-2 whitespace-nowrap">
                   <button
                     type="button"
                     onClick={(e) => {
                       e.preventDefault();
                       console.log('Mevcut durum:', vehicle.status);
                       
-                      // Basit döngüsel durum değişimi
                       const newStatus: Vehicle['status'] = vehicle.status === 'Aktif' 
                         ? 'Kademe' 
                         : vehicle.status === 'Kademe'
@@ -865,7 +910,7 @@ export const Vehicles: React.FC = () => {
                       };
                       handleUpdateVehicle(updatedVehicle);
                     }}
-                    className={`w-28 px-3 py-1 rounded-full text-xs font-medium transition-colors duration-200 cursor-pointer ${
+                    className={`w-24 px-2 py-1 rounded-full text-xs font-medium transition-colors duration-200 cursor-pointer ${
                       vehicle.status === 'Aktif' 
                         ? 'bg-green-900 text-green-300 hover:bg-green-800' 
                         : vehicle.status === 'Kademe'
@@ -876,7 +921,7 @@ export const Vehicles: React.FC = () => {
                     {vehicle.status}
                   </button>
                 </td>
-                <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-300">
+                <td className="px-3 py-2 whitespace-nowrap text-gray-300">
                   <div className="flex space-x-2">
                     <button
                       onClick={() => {
@@ -886,8 +931,7 @@ export const Vehicles: React.FC = () => {
                       }}
                       className="text-blue-400 hover:text-blue-300 flex items-center"
                     >
-                      <Wrench className="w-5 h-5 mr-1" />
-                      Bakım Geçmişi
+                      <Wrench className="w-5 h-5" />
                     </button>
                     <button
                       onClick={() => {
@@ -899,7 +943,7 @@ export const Vehicles: React.FC = () => {
                       className="text-blue-400 hover:text-blue-300 relative group"
                     >
                       <Calendar className="w-5 h-5" />
-                      <PenSquare className="w-3 h-3 absolute -top-1 -right-1 text-blue-400 group-hover:text-blue-300" />
+                      <PenSquare className="w-4 h-4 absolute -top-1 -right-1 text-blue-400 group-hover:text-blue-300" />
                     </button>
                     <button
                       onClick={() => handleDeleteVehicle(vehicle.id)}
@@ -914,242 +958,6 @@ export const Vehicles: React.FC = () => {
           </tbody>
         </table>
       </div>
-
-      {selectedVehicle && !showVehicleDetail && (
-        <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50">
-          <div className="bg-[#2D333B] rounded-lg p-6 w-full max-w-md">
-            <h2 className="text-xl font-semibold text-white mb-4">Araç Düzenle</h2>
-            <div className="space-y-4">
-              <div>
-                <label className="block text-sm font-medium text-gray-300 mb-1">Plaka</label>
-                <div className="text-white">{selectedVehicle.plate}</div>
-              </div>
-              
-              <div>
-                <label className="block text-sm font-medium text-gray-300 mb-1">Model</label>
-                <div className="text-white">{selectedVehicle.model}</div>
-              </div>
-
-              <div>
-                <label className="block text-sm font-medium text-gray-300 mb-1">Tip</label>
-                <div className="text-white">{selectedVehicle.type}</div>
-              </div>
-
-              <div>
-                <label className="block text-sm font-medium text-gray-300 mb-1">Yıl</label>
-                <div className="text-white">{selectedVehicle.year}</div>
-              </div>
-
-              <div>
-                <label className="block text-sm font-medium text-gray-300 mb-1">Şasi No</label>
-                <div className="text-white">{selectedVehicle.chassisNumber}</div>
-              </div>
-
-              <div>
-                <label className="block text-sm font-medium text-gray-300 mb-1">Son Bakım Tarihi</label>
-                <input
-                  type="date"
-                  value={selectedVehicle.lastMaintenance}
-                  onChange={(e) => {
-                    const nextMaintenanceDate = new Date(e.target.value);
-                    nextMaintenanceDate.setMonth(nextMaintenanceDate.getMonth() + 6);
-                    
-                    setSelectedVehicle({
-                      ...selectedVehicle,
-                      lastMaintenance: e.target.value,
-                      nextMaintenance: nextMaintenanceDate.toISOString().split('T')[0]
-                    });
-                  }}
-                  className="w-full px-3 py-2 bg-[#1C2128] border border-gray-700 rounded-lg text-white"
-                />
-              </div>
-
-              <div>
-                <label className="block text-sm font-medium text-gray-300 mb-1">Sonraki Bakım Tarihi</label>
-                <div className="text-white">
-                  {new Date(selectedVehicle.nextMaintenance).toLocaleDateString('tr-TR')}
-                </div>
-              </div>
-
-              <div>
-                <label className="block text-sm font-medium text-gray-300 mb-1">Son Fenni Muayene Tarihi</label>
-                <input
-                  type="date"
-                  value={selectedVehicle.lastInspection}
-                  onChange={(e) => {
-                    const nextInspectionDate = new Date(e.target.value);
-                    nextInspectionDate.setFullYear(nextInspectionDate.getFullYear() + 1);
-                    
-                    setSelectedVehicle({
-                      ...selectedVehicle,
-                      lastInspection: e.target.value,
-                      nextInspection: nextInspectionDate.toISOString().split('T')[0]
-                    });
-                  }}
-                  className="w-full px-3 py-2 bg-[#1C2128] border border-gray-700 rounded-lg text-white"
-                />
-              </div>
-
-              <div>
-                <label className="block text-sm font-medium text-gray-300 mb-1">Sonraki Fenni Muayene Tarihi</label>
-                <div className="text-white">
-                  {new Date(selectedVehicle.nextInspection).toLocaleDateString('tr-TR')}
-                </div>
-              </div>
-
-              <div>
-                <label className="block text-sm font-medium text-gray-300 mb-1">Durum</label>
-                <select
-                  value={selectedVehicle.status}
-                  onChange={(e) => setSelectedVehicle({
-                    ...selectedVehicle,
-                    status: e.target.value as Vehicle['status']
-                  })}
-                  className="w-full px-3 py-2 bg-[#1C2128] border border-gray-700 rounded-lg text-white"
-                >
-                  <option value="Aktif">Aktif</option>
-                  <option value="Kademe">Kademe</option>
-                  <option value="Yetkili Servis">Yetkili Servis</option>
-                </select>
-              </div>
-            </div>
-
-            <div className="flex justify-end space-x-4 mt-6">
-              <button
-                onClick={() => setSelectedVehicle(null)}
-                className="bg-gray-600 hover:bg-gray-700 text-white px-4 py-2 rounded-lg text-sm"
-              >
-                İptal
-              </button>
-              <button
-                onClick={() => handleUpdateVehicle(selectedVehicle)}
-                className="bg-blue-500 hover:bg-blue-600 text-white px-4 py-2 rounded-lg text-sm"
-              >
-                Güncelle
-              </button>
-            </div>
-          </div>
-        </div>
-      )}
-
-      {/* Bakım Tarihi Düzenleme Modalı */}
-      {showMaintenanceModal && selectedVehicle && (
-        <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50">
-          <div className="bg-[#1C2128] rounded-lg p-6 max-w-md w-full mx-4">
-            <h3 className="text-lg font-medium text-white mb-4">Bakım Tarihlerini Güncelle</h3>
-            <div className="space-y-4">
-              <div>
-                <label className="block text-sm font-medium text-gray-300 mb-2">Son Bakım Tarihi</label>
-                <input
-                  type="date"
-                  value={maintenanceDate}
-                  onChange={(e) => setMaintenanceDate(e.target.value)}
-                  className="w-full px-3 py-2 bg-[#2D333B] border border-gray-700 rounded-lg text-white"
-                />
-              </div>
-              <div>
-                <label className="block text-sm font-medium text-gray-300 mb-2">Fenni Muayene Tarihi</label>
-                <input
-                  type="date"
-                  value={technicalInspectionDate}
-                  onChange={(e) => setTechnicalInspectionDate(e.target.value)}
-                  className="w-full px-3 py-2 bg-[#2D333B] border border-gray-700 rounded-lg text-white"
-                />
-              </div>
-              <div className="flex justify-end space-x-3">
-                <button
-                  onClick={() => setShowMaintenanceModal(false)}
-                  className="px-4 py-2 bg-gray-600 hover:bg-gray-700 text-white rounded-lg text-sm"
-                >
-                  İptal
-                </button>
-                <button
-                  onClick={handleMaintenanceUpdate}
-                  className="px-4 py-2 bg-blue-500 hover:bg-blue-600 text-white rounded-lg text-sm"
-                >
-                  Güncelle
-                </button>
-              </div>
-            </div>
-          </div>
-        </div>
-      )}
-
-      {/* Lastik Atama Modalı */}
-      {showTireAssignModal && selectedVehicle && (
-        <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50">
-          <div className="bg-[#1C2128] rounded-lg p-6 max-w-md w-full mx-4">
-            <h3 className="text-lg font-medium text-white mb-4">
-              {selectedVehicle.plate} - Lastik Ata
-            </h3>
-            <div className="space-y-4">
-              <div>
-                <label className="block text-sm font-medium text-gray-300 mb-2">Lastik</label>
-                <select
-                  value={selectedTireId}
-                  onChange={(e) => setSelectedTireId(e.target.value)}
-                  className="w-full px-3 py-2 bg-[#2D333B] border border-gray-700 rounded-lg text-white"
-                >
-                  <option value="">Lastik Seçin</option>
-                  {availableTires.map(tire => (
-                    <option key={tire.id} value={tire.id}>
-                      {tire.brand} {tire.pattern} - {tire.serialNumber}
-                    </option>
-                  ))}
-                </select>
-              </div>
-
-              <div>
-                <label className="block text-sm font-medium text-gray-300 mb-2">Pozisyon</label>
-                <select
-                  value={tirePosition}
-                  onChange={(e) => setTirePosition(e.target.value)}
-                  className="w-full px-3 py-2 bg-[#2D333B] border border-gray-700 rounded-lg text-white"
-                >
-                  <option value="">Pozisyon Seçin</option>
-                  <option value="ÖnSol">Ön Sol</option>
-                  <option value="ÖnSağ">Ön Sağ</option>
-                  <option value="ArkaSol1">Arka Sol 1</option>
-                  <option value="ArkaSağ1">Arka Sağ 1</option>
-                  <option value="ArkaSol2">Arka Sol 2</option>
-                  <option value="ArkaSağ2">Arka Sağ 2</option>
-                </select>
-              </div>
-
-              <div>
-                <label className="block text-sm font-medium text-gray-300 mb-2">Takılma Kilometresi</label>
-                <input
-                  type="number"
-                  value={installationMileage}
-                  onChange={(e) => setInstallationMileage(Number(e.target.value))}
-                  className="w-full px-3 py-2 bg-[#2D333B] border border-gray-700 rounded-lg text-white"
-                  placeholder="Örn: 50000"
-                />
-              </div>
-
-              <div className="flex justify-end space-x-3">
-                <button
-                  onClick={() => {
-                    setShowTireAssignModal(false);
-                    setSelectedTireId('');
-                    setTirePosition('');
-                    setInstallationMileage(0);
-                  }}
-                  className="px-4 py-2 bg-gray-600 hover:bg-gray-700 text-white rounded-lg text-sm"
-                >
-                  İptal
-                </button>
-                <button
-                  onClick={handleTireAssignment}
-                  className="px-4 py-2 bg-blue-500 hover:bg-blue-600 text-white rounded-lg text-sm"
-                >
-                  Lastik Ata
-                </button>
-              </div>
-            </div>
-          </div>
-        </div>
-      )}
     </div>
   );
 }; 

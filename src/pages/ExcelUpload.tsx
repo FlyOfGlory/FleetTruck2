@@ -302,9 +302,9 @@ export const ExcelUpload: React.FC = () => {
   return (
     <div className="container mx-auto px-4 py-8">
       <h1 className="text-2xl font-bold text-white mb-6">Kilometre Verisi Yükle</h1>
-
+      
       <div className="bg-[#1C2128] rounded-lg p-6">
-        <div className="mb-6">
+      <div className="mb-6">
           <h2 className="text-lg font-medium text-white mb-2">Excel Dosyası Yükle</h2>
           <p className="text-gray-400 text-sm mb-4">
             Excel dosyanızda "Plaka", "Kilometre" ve "Tarih" sütunları bulunmalıdır.
@@ -339,15 +339,15 @@ export const ExcelUpload: React.FC = () => {
                 </p>
                 <p className="text-xs text-gray-500">
                   Desteklenen formatlar: XLSX, XLS
-                </p>
-              </div>
-              <input
-                type="file"
+        </p>
+      </div>
+        <input
+          type="file"
                 className="hidden"
-                accept=".xlsx,.xls"
+          accept=".xlsx,.xls"
                 onChange={handleChange}
-                disabled={loading}
-              />
+          disabled={loading}
+        />
               {dragActive && (
                 <div
                   className="absolute inset-0 rounded-lg"
@@ -357,9 +357,9 @@ export const ExcelUpload: React.FC = () => {
                   onDrop={handleDrop}
                 />
               )}
-            </label>
+        </label>
           </form>
-        </div>
+      </div>
 
         {/* Excel Önizleme */}
         {previewData.length > 0 && (
@@ -372,23 +372,23 @@ export const ExcelUpload: React.FC = () => {
                     <th className="px-4 py-2 text-left text-xs font-medium text-gray-400">Plaka</th>
                     <th className="px-4 py-2 text-right text-xs font-medium text-gray-400">Kilometre</th>
                     <th className="px-4 py-2 text-left text-xs font-medium text-gray-400">Tarih</th>
-                  </tr>
-                </thead>
+                </tr>
+              </thead>
                 <tbody className="divide-y divide-gray-700">
-                  {previewData.map((row, index) => (
+                {previewData.map((row, index) => (
                     <tr key={index} className="hover:bg-gray-700/30">
                       <td className="px-4 py-2 text-sm text-gray-300">{row.Plaka}</td>
                       <td className="px-4 py-2 text-sm text-right text-gray-300">
                         {row.Kilometre?.toLocaleString('tr-TR')}
                       </td>
                       <td className="px-4 py-2 text-sm text-gray-300">{row.Tarih}</td>
-                    </tr>
-                  ))}
-                </tbody>
-              </table>
-            </div>
+                  </tr>
+                ))}
+              </tbody>
+            </table>
           </div>
-        )}
+        </div>
+      )}
 
         {unmatchedPlates.length > 0 && (
           <div className="mt-6">
@@ -470,7 +470,7 @@ export const ExcelUpload: React.FC = () => {
                             </span>
                             <span className="text-green-400">
                               {record.updatedCount} güncelleme
-                            </span>
+                              </span>
                             {record.unmatchedCount > 0 && (
                               <span className="text-red-400">
                                 {record.unmatchedCount} eşleşmeyen
@@ -486,7 +486,7 @@ export const ExcelUpload: React.FC = () => {
                           <Trash2 className="w-4 h-4 text-red-400" />
                         </button>
                       </div>
-
+                      
                       {selectedUpload?.id === record.id && (
                         <div className="mt-4 overflow-x-auto">
                           <table className="min-w-full divide-y divide-gray-700">
@@ -495,20 +495,20 @@ export const ExcelUpload: React.FC = () => {
                                 <th className="px-4 py-2 text-left text-xs font-medium text-gray-400">Plaka</th>
                                 <th className="px-4 py-2 text-right text-xs font-medium text-gray-400">Kilometre</th>
                                 <th className="px-4 py-2 text-left text-xs font-medium text-gray-400">Tarih</th>
-                              </tr>
-                            </thead>
+                                </tr>
+                              </thead>
                             <tbody className="divide-y divide-gray-700">
                               {record.data.map((row, index) => (
                                 <tr key={index} className="hover:bg-gray-700/30">
                                   <td className="px-4 py-2 text-sm text-gray-300">{row.Plaka}</td>
                                   <td className="px-4 py-2 text-sm text-right text-gray-300">
                                     {row.Kilometre?.toLocaleString('tr-TR')}
-                                  </td>
+                                    </td>
                                   <td className="px-4 py-2 text-sm text-gray-300">{row.Tarih}</td>
-                                </tr>
-                              ))}
-                            </tbody>
-                          </table>
+                                  </tr>
+                                ))}
+                              </tbody>
+                            </table>
                         </div>
                       )}
                     </div>

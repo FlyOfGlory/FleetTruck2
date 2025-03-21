@@ -50,17 +50,28 @@ export type MaintenanceType = 'Periyodik Bakım' | 'Arıza' | 'Kaza' | 'Diğer';
 
 export interface MaintenanceRecord {
   id: string;
-  date: string;
-  type: MaintenanceType;
-  mileage?: number;
+  date: Date;
+  mileage: number;
+  nextMaintenanceMileage?: number;
+  nextMaintenanceDate?: Date;
   description: string;
-  cost: number;
-  location: string;
-  technician: string;
-  parts: string[];
-  nextMaintenanceMileage: number;
-  nextMaintenanceDate: string;
 }
+
+export type Facility = 
+  | 'İZMİR YOLU'
+  | 'PANAYIR'
+  | 'İNEGÖL'
+  | 'PAMUKOVA'
+  | 'TEKNOSAB'
+  | 'TOKİ'
+  | 'YENİ KADEME'
+  | 'HAMZABEY (İNEGÖL) OSB'
+  | 'GÜRSU TOKİ'
+  | 'DEMİRTAŞ (AVDANCIK)'
+  | 'MEKECE-1'
+  | 'MEKECE-2'
+  | 'KAYAPA'
+  | 'İNEGÖL CİHANTAŞ';
 
 export interface Vehicle {
   id: string;
@@ -69,17 +80,16 @@ export interface Vehicle {
   model: string;
   year: number;
   mileage: number;
-  lastMaintenance?: {
-    date: string;
-    mileage: number;
-  };
-  technicalInspectionDate?: string;
-  tires?: {
-    id: string;
-    position: string;
-    installationDate: string;
-    installationMileage: number;
-  }[];
+  facility: Facility;
+  lastMaintenance?: Date;
+  technicalInspectionDate?: Date;
+  technicalInspectionEndDate?: Date;
+  tires: Tire[];
+  tireStock: number;
+  tireChangeCount: number;
+  maintenanceHistory: MaintenanceRecord[];
+  createdAt: Date;
+  updatedAt: Date;
 }
 
 export interface VehicleFormData {
