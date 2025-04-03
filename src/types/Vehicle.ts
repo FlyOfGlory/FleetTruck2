@@ -79,17 +79,17 @@ export interface Vehicle {
   brand: string;
   model: string;
   year: number;
-  mileage: number;
-  facility: Facility;
-  lastMaintenance?: Date;
-  technicalInspectionDate?: Date;
-  technicalInspectionEndDate?: Date;
-  tires: Tire[];
-  tireStock: number;
-  tireChangeCount: number;
-  maintenanceHistory: MaintenanceRecord[];
-  createdAt: Date;
-  updatedAt: Date;
+  status: 'active' | 'inactive' | 'maintenance' | 'repair';
+  mileage?: number;
+  lastMileageUpdate?: string;
+  driver?: string;
+  nextMaintenanceDate?: string;
+  nextMaintenanceMileage?: number;
+  lastMaintenanceDate?: string;
+  lastMaintenanceMileage?: number;
+  notes?: string;
+  createdAt: string;
+  updatedAt: string;
 }
 
 export interface VehicleFormData {

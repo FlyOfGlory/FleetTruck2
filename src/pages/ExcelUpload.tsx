@@ -11,18 +11,26 @@ import { format, isValid, parseISO } from 'date-fns';
 import { tr } from 'date-fns/locale';
 
 interface RawExcelData {
-  "Plaka "?: string;
-  "İlk Mesafe Sayacı Değeri (km)"?: string;
-  "İlk Mesafe Sayacı Değeri Tarihi "?: string;
-  "Son Mesafe Sayacı Değeri (km)"?: string;
-  "Son Mesafe Sayacı Değeri Tarihi "?: string;
+  "Kayıt No Cihaz Numarası"?: string;
+  "Plaka"?: string;
+  "Sürücü"?: string;
+  "İlk Mesafe Sayacı Değ"?: string;
+  "İlk Mesafe Sayacı Değeri Tarihi"?: string;
+  "Son Mesafe Sayacı De"?: string;
+  "Son Mesafe Sayacı Değeri Tarihi"?: string;
   "Toplam Mesafe (km)"?: string;
 }
 
 interface ExcelData {
-  Plaka: string;
-  Kilometre: number;
-  Tarih: string;
+  kayitNo: string;
+  cihazNo: string;
+  plaka: string;
+  surucu: string;
+  ilkKm: number;
+  ilkTarih: string;
+  sonKm: number;
+  sonTarih: string;
+  toplamMesafe: number;
 }
 
 interface UploadRecord {
@@ -81,25 +89,51 @@ export const ExcelUpload: React.FC = () => {
         const worksheet = workbook.Sheets[sheetName];
         const jsonData = XLSX.utils.sheet_to_json<RawExcelData>(worksheet, { 
           raw: false,
-          dateNF: 'dd.mm.yyyy'
+          dateNF: 'dd.mm.yyyy',
+          defval: '',
+          blankrows: false,
+          header: 1
         });
 
         if (jsonData.length === 0) {
           throw new Error('Excel dosyasında veri bulunamadı');
         }
 
-        console.log('Excel verisi:', jsonData);
+        console.log('Ham Excel verisi:', jsonData);
+
+        // İlk satırı başlık olarak kullan
+        const headers = jsonData[0] as string[];
+        const rows = jsonData.slice(1);
 
         // Excel verilerini önizleme için ayarla
-        const previewRows: ExcelData[] = jsonData.map(row => {
-          console.log('İşlenen satır:', row);
-          const kilometre = row["İlk Mesafe Sayacı Değeri (km)"] || row["Son Mesafe Sayacı Değeri (km)"] || '0';
-          return {
-            Plaka: String(row["Plaka "] || '').trim(),
-            Kilometre: parseInt(String(kilometre).replace(/[^0-9.]/g, '')),
-            Tarih: String(row["İlk Mesafe Sayacı Değeri Tarihi "] || row["Son Mesafe Sayacı Değeri Tarihi "] || '').trim()
+        const previewRows: ExcelData[] = rows.map(row => {
+          const rowData = row as any[];
+          const getColumnValue = (columnName: string) => {
+            const index = headers.findIndex(h => h.includes(columnName));
+            return index >= 0 ? rowData[index] : '';
           };
-        }).filter(row => row.Plaka && row.Kilometre > 0);
+
+          const ilkKm = parseFloat(String(getColumnValue("İlk Mesafe Sayacı Değ") || '0').replace(/[^0-9.]/g, ''));
+          const sonKm = parseFloat(String(getColumnValue("Son Mesafe Sayacı De") || '0').replace(/[^0-9.]/g, ''));
+          const toplamMesafe = parseFloat(String(getColumnValue("Toplam Mesafe") || '0').replace(/[^0-9.]/g, ''));
+
+          // Kayıt No ve Cihaz Numarası aynı sütunda
+          const kayitNoCihazNo = String(getColumnValue("Kayıt No Cihaz") || '').trim().split(' ');
+          const kayitNo = kayitNoCihazNo[0] || '';
+          const cihazNo = kayitNoCihazNo[1] || '';
+
+          return {
+            kayitNo: kayitNo,
+            cihazNo: cihazNo,
+            plaka: String(getColumnValue("Plaka") || '').trim(),
+            surucu: String(getColumnValue("Sürücü") || '').trim(),
+            ilkKm: ilkKm,
+            ilkTarih: String(getColumnValue("İlk Mesafe Sayacı Değeri Tarihi") || '').trim(),
+            sonKm: sonKm,
+            sonTarih: String(getColumnValue("Son Mesafe Sayacı Değeri Tarihi") || '').trim(),
+            toplamMesafe: toplamMesafe
+          };
+        }).filter(row => row.plaka && (row.sonKm > 0 || row.ilkKm > 0));
 
         console.log('Önizleme verileri:', previewRows);
         setPreviewData(previewRows);
@@ -109,21 +143,25 @@ export const ExcelUpload: React.FC = () => {
         let updateCount = 0;
 
         previewRows.forEach((row) => {
-          if (!row.Plaka || !row.Kilometre) {
-            return;
-          }
+          if (!row.plaka) return;
 
-          const plate = row.Plaka.trim().toUpperCase();
-          const vehicleIndex = updatedVehicles.findIndex(v => v.plate.trim().toUpperCase() === plate);
+          // Plakadaki tüm boşlukları kaldır ve büyük harfe çevir
+          const normalizedPlate = row.plaka.trim().toUpperCase().replace(/\s+/g, '');
+          const vehicleIndex = updatedVehicles.findIndex(v => 
+            v.plate.trim().toUpperCase().replace(/\s+/g, '') === normalizedPlate
+          );
 
           if (vehicleIndex !== -1) {
             const vehicle = updatedVehicles[vehicleIndex];
             const oldMileage = vehicle.mileage || 0;
+            const newMileage = row.sonKm || row.ilkKm;
             
-            if (row.Kilometre > oldMileage) {
+            if (newMileage > oldMileage) {
               updatedVehicles[vehicleIndex] = {
                 ...vehicle,
-                mileage: row.Kilometre
+                mileage: newMileage,
+                lastMileageUpdate: row.sonTarih || row.ilkTarih,
+                driver: row.surucu || vehicle.driver
               };
               
               updateCount++;
@@ -135,15 +173,15 @@ export const ExcelUpload: React.FC = () => {
                   {
                     entityId: vehicle.id,
                     entityType: 'vehicle',
-                    description: `${vehicle.plate} plakalı aracın kilometresi güncellendi.`,
+                    description: `${vehicle.plate} plakalı aracın kilometresi güncellendi. Sürücü: ${row.surucu}`,
                     oldValue: { mileage: oldMileage },
-                    newValue: { mileage: row.Kilometre }
+                    newValue: { mileage: newMileage }
                   }
                 );
               }
             }
           } else {
-            unmatched.push(plate);
+            unmatched.push(normalizedPlate);
           }
         });
 
@@ -300,235 +338,223 @@ export const ExcelUpload: React.FC = () => {
   }, [uploadHistory]);
 
   return (
-    <div className="container mx-auto px-4 py-8">
-      <h1 className="text-2xl font-bold text-white mb-6">Kilometre Verisi Yükle</h1>
-      
-      <div className="bg-[#1C2128] rounded-lg p-6">
-      <div className="mb-6">
-          <h2 className="text-lg font-medium text-white mb-2">Excel Dosyası Yükle</h2>
-          <p className="text-gray-400 text-sm mb-4">
-            Excel dosyanızda "Plaka", "Kilometre" ve "Tarih" sütunları bulunmalıdır.
-          </p>
-          <form
-            onDragEnter={handleDrag}
-            onSubmit={(e) => e.preventDefault()}
-            className="w-full"
-          >
+    <div className="p-4">
+      <div className="mb-8">
+        <h1 className="text-2xl font-bold text-white mb-4">Kilometre Bilgisi Yükleme</h1>
+        
+        <div 
+          className={`border-2 border-dashed rounded-lg p-8 text-center ${
+            dragActive ? 'border-blue-500 bg-blue-500/10' : 'border-gray-600 hover:border-blue-500'
+          }`}
+          onDragEnter={handleDrag}
+          onDragLeave={handleDrag}
+          onDragOver={handleDrag}
+          onDrop={handleDrop}
+        >
+          <div className="flex flex-col items-center justify-center">
+            <Upload className="w-12 h-12 text-gray-400 mb-4" />
+            <p className="text-gray-300 mb-2">Excel dosyasını sürükleyip bırakın veya seçin</p>
+            <p className="text-gray-400 text-sm">(.xlsx veya .xls)</p>
+            <input
+              type="file"
+              className="hidden"
+              accept=".xlsx,.xls"
+              onChange={handleChange}
+              id="file-upload"
+            />
             <label
-              className={`
-                relative flex flex-col items-center justify-center w-full p-6 
-                border-2 border-dashed rounded-lg cursor-pointer
-                transition-colors duration-200 ease-in-out
-                ${dragActive 
-                  ? 'border-blue-500 bg-blue-500/10' 
-                  : 'border-gray-700 hover:border-gray-500'
-                }
-              `}
+              htmlFor="file-upload"
+              className="mt-4 px-4 py-2 bg-blue-600 text-white rounded-lg cursor-pointer hover:bg-blue-700"
             >
-              <div className="flex flex-col items-center justify-center pt-5 pb-6">
-                <Upload 
-                  className={`w-12 h-12 mb-3 ${loading ? 'animate-bounce' : ''} ${
-                    dragActive ? 'text-blue-500' : 'text-gray-400'
-                  }`}
-                />
-                <p className="mb-2 text-sm text-gray-300">
-                  {loading 
-                    ? 'Yükleniyor...' 
-                    : <span>Excel dosyasını sürükleyin veya <span className="text-blue-500">seçmek için tıklayın</span></span>
-                  }
-                </p>
-                <p className="text-xs text-gray-500">
-                  Desteklenen formatlar: XLSX, XLS
-        </p>
-      </div>
-        <input
-          type="file"
-                className="hidden"
-          accept=".xlsx,.xls"
-                onChange={handleChange}
-          disabled={loading}
-        />
-              {dragActive && (
-                <div
-                  className="absolute inset-0 rounded-lg"
-                  onDragEnter={handleDrag}
-                  onDragLeave={handleDrag}
-                  onDragOver={handleDrag}
-                  onDrop={handleDrop}
-                />
-              )}
-        </label>
-          </form>
+              Dosya Seç
+            </label>
+          </div>
+        </div>
       </div>
 
-        {/* Excel Önizleme */}
-        {previewData.length > 0 && (
-          <div className="mt-6">
-            <h3 className="text-lg font-medium text-white mb-2">Excel Önizleme</h3>
-            <div className="bg-[#2D333B] rounded-lg p-4 overflow-x-auto">
-              <table className="min-w-full divide-y divide-gray-700">
-                <thead>
+      {loading && (
+        <div className="text-center py-4">
+          <p className="text-gray-300">Dosya işleniyor...</p>
+        </div>
+      )}
+
+      {previewData.length > 0 && (
+        <div className="mb-8">
+          <h2 className="text-xl font-bold text-white mb-4">Önizleme</h2>
+          <div className="bg-[#161b22] rounded-lg shadow-md overflow-hidden border border-gray-800">
+            <div className="overflow-x-auto">
+              <table className="min-w-full divide-y divide-gray-800">
+                <thead className="bg-[#0d1117]">
                   <tr>
-                    <th className="px-4 py-2 text-left text-xs font-medium text-gray-400">Plaka</th>
-                    <th className="px-4 py-2 text-right text-xs font-medium text-gray-400">Kilometre</th>
-                    <th className="px-4 py-2 text-left text-xs font-medium text-gray-400">Tarih</th>
-                </tr>
-              </thead>
-                <tbody className="divide-y divide-gray-700">
-                {previewData.map((row, index) => (
-                    <tr key={index} className="hover:bg-gray-700/30">
-                      <td className="px-4 py-2 text-sm text-gray-300">{row.Plaka}</td>
-                      <td className="px-4 py-2 text-sm text-right text-gray-300">
-                        {row.Kilometre?.toLocaleString('tr-TR')}
-                      </td>
-                      <td className="px-4 py-2 text-sm text-gray-300">{row.Tarih}</td>
+                    <th className="px-4 py-3 text-left text-xs font-medium text-gray-400 uppercase tracking-wider">
+                      Kayıt No
+                    </th>
+                    <th className="px-4 py-3 text-left text-xs font-medium text-gray-400 uppercase tracking-wider">
+                      Cihaz No
+                    </th>
+                    <th className="px-4 py-3 text-left text-xs font-medium text-gray-400 uppercase tracking-wider">
+                      Plaka
+                    </th>
+                    <th className="px-4 py-3 text-left text-xs font-medium text-gray-400 uppercase tracking-wider">
+                      Sürücü
+                    </th>
+                    <th className="px-4 py-3 text-right text-xs font-medium text-gray-400 uppercase tracking-wider">
+                      İlk Km
+                    </th>
+                    <th className="px-4 py-3 text-left text-xs font-medium text-gray-400 uppercase tracking-wider">
+                      İlk Tarih
+                    </th>
+                    <th className="px-4 py-3 text-right text-xs font-medium text-gray-400 uppercase tracking-wider">
+                      Son Km
+                    </th>
+                    <th className="px-4 py-3 text-left text-xs font-medium text-gray-400 uppercase tracking-wider">
+                      Son Tarih
+                    </th>
+                    <th className="px-4 py-3 text-right text-xs font-medium text-gray-400 uppercase tracking-wider">
+                      Toplam Mesafe
+                    </th>
                   </tr>
-                ))}
-              </tbody>
-            </table>
+                </thead>
+                <tbody className="bg-[#161b22] divide-y divide-gray-800">
+                  {previewData.map((row, index) => (
+                    <tr key={index} className="hover:bg-[#21262d]">
+                      <td className="px-4 py-2 text-sm text-gray-300">{row.kayitNo}</td>
+                      <td className="px-4 py-2 text-sm text-gray-300">{row.cihazNo}</td>
+                      <td className="px-4 py-2 text-sm text-gray-300">{row.plaka}</td>
+                      <td className="px-4 py-2 text-sm text-gray-300">{row.surucu}</td>
+                      <td className="px-4 py-2 text-sm text-right text-gray-300">
+                        {row.ilkKm?.toLocaleString('tr-TR')}
+                      </td>
+                      <td className="px-4 py-2 text-sm text-gray-300">{row.ilkTarih}</td>
+                      <td className="px-4 py-2 text-sm text-right text-gray-300">
+                        {row.sonKm?.toLocaleString('tr-TR')}
+                      </td>
+                      <td className="px-4 py-2 text-sm text-gray-300">{row.sonTarih}</td>
+                      <td className="px-4 py-2 text-sm text-right text-gray-300">
+                        {row.toplamMesafe?.toLocaleString('tr-TR')}
+                      </td>
+                    </tr>
+                  ))}
+                </tbody>
+              </table>
+            </div>
           </div>
         </div>
       )}
 
-        {unmatchedPlates.length > 0 && (
-          <div className="mt-6">
-            <h3 className="text-lg font-medium text-white mb-2">Eşleşmeyen Plakalar</h3>
-            <div className="bg-[#2D333B] rounded-lg p-4">
-              <p className="text-gray-400 mb-2">
-                Aşağıdaki plakalar sistemde bulunamadı:
-              </p>
-              <div className="space-y-1">
-                {unmatchedPlates.map((plate, index) => (
-                  <div key={index} className="text-red-400">
-                    {plate}
-                  </div>
-                ))}
-              </div>
+      {unmatchedPlates.length > 0 && (
+        <div className="mb-8">
+          <h2 className="text-xl font-bold text-white mb-4">Eşleşmeyen Plakalar</h2>
+          <div className="bg-[#161b22] rounded-lg shadow-md p-4 border border-gray-800">
+            <div className="text-gray-300">
+              {unmatchedPlates.map((plate, index) => (
+                <span key={index} className="inline-block bg-red-900/50 text-red-200 rounded px-2 py-1 text-sm mr-2 mb-2">
+                  {plate}
+                </span>
+              ))}
             </div>
           </div>
-        )}
+        </div>
+      )}
 
-        {/* Yükleme Geçmişi */}
-        <div className="mt-8">
-          <h2 className="text-lg font-medium text-white mb-4">Yükleme Geçmişi</h2>
+      {uploadHistory.length > 0 && (
+        <div>
+          <h2 className="text-xl font-bold text-white mb-4">Yükleme Geçmişi</h2>
           <div className="space-y-4">
-            {Object.entries(groupByDate(uploadHistory)).map(([date, records]) => (
-              <div key={date} className="bg-[#2D333B] rounded-lg overflow-hidden">
-                <div className="bg-[#22272E] px-4 py-2 flex items-center justify-between">
-                  <div className="flex items-center space-x-2">
-                    <Calendar className="w-4 h-4 text-gray-400" />
-                    <span className="text-sm font-medium text-gray-300">
-                      {(() => {
-                        try {
-                          const parsedDate = parseISO(date);
-                          return isValid(parsedDate) 
-                            ? format(parsedDate, 'd MMMM yyyy', { locale: tr })
-                            : 'Geçersiz Tarih';
-                        } catch {
-                          return 'Geçersiz Tarih';
-                        }
-                      })()}
-                    </span>
-                  </div>
-                  <span className="text-sm text-gray-400">
-                    {records.length} yükleme
-                  </span>
-                </div>
-                <div className="divide-y divide-gray-700">
-                  {records.map((record) => (
-                    <div key={record.id} className="p-4">
-                      <div className="flex items-start justify-between">
-                        <div 
-                          className="flex-1 cursor-pointer"
-                          onClick={() => setSelectedUpload(selectedUpload?.id === record.id ? null : record)}
-                        >
-                          <div className="flex items-center space-x-2">
-                            <span className="text-sm text-gray-300">
-                              {(() => {
-                                try {
-                                  const parsedDate = parseISO(record.date);
-                                  return isValid(parsedDate)
-                                    ? format(parsedDate, 'HH:mm', { locale: tr })
-                                    : '--:--';
-                                } catch {
-                                  return '--:--';
-                                }
-                              })()}
-                            </span>
-                            <h3 className="text-sm font-medium text-gray-200">
-                              {record.fileName}
-                            </h3>
-                            {selectedUpload?.id === record.id ? (
-                              <ChevronDown className="w-4 h-4 text-gray-400" />
-                            ) : (
-                              <ChevronRight className="w-4 h-4 text-gray-400" />
-                            )}
-                          </div>
-                          <div className="mt-1 flex items-center space-x-4 text-xs">
-                            <span className="text-gray-400">
-                              {record.recordCount} kayıt
-                            </span>
-                            <span className="text-green-400">
-                              {record.updatedCount} güncelleme
-                              </span>
-                            {record.unmatchedCount > 0 && (
-                              <span className="text-red-400">
-                                {record.unmatchedCount} eşleşmeyen
-                              </span>
-                            )}
-                          </div>
-                        </div>
-                        <button
-                          onClick={() => handleDeleteHistory(record.id)}
-                          className="p-1 hover:bg-red-500/10 rounded-full transition-colors"
-                          title="Sil"
-                        >
-                          <Trash2 className="w-4 h-4 text-red-400" />
-                        </button>
-                      </div>
-                      
-                      {selectedUpload?.id === record.id && (
-                        <div className="mt-4 overflow-x-auto">
-                          <table className="min-w-full divide-y divide-gray-700">
-                            <thead>
-                              <tr>
-                                <th className="px-4 py-2 text-left text-xs font-medium text-gray-400">Plaka</th>
-                                <th className="px-4 py-2 text-right text-xs font-medium text-gray-400">Kilometre</th>
-                                <th className="px-4 py-2 text-left text-xs font-medium text-gray-400">Tarih</th>
-                                </tr>
-                              </thead>
-                            <tbody className="divide-y divide-gray-700">
-                              {record.data.map((row, index) => (
-                                <tr key={index} className="hover:bg-gray-700/30">
-                                  <td className="px-4 py-2 text-sm text-gray-300">{row.Plaka}</td>
-                                  <td className="px-4 py-2 text-sm text-right text-gray-300">
-                                    {row.Kilometre?.toLocaleString('tr-TR')}
-                                    </td>
-                                  <td className="px-4 py-2 text-sm text-gray-300">{row.Tarih}</td>
-                                  </tr>
-                                ))}
-                              </tbody>
-                            </table>
-                        </div>
-                      )}
+            {uploadHistory.map((record) => (
+              <div key={record.id} className="bg-[#161b22] rounded-lg shadow-md border border-gray-800">
+                <div className="p-4 flex items-center justify-between">
+                  <div>
+                    <div className="flex items-center space-x-2">
+                      <Calendar className="w-4 h-4 text-gray-400" />
+                      <span className="text-gray-300">
+                        {format(parseISO(record.date), 'dd MMMM yyyy HH:mm', { locale: tr })}
+                      </span>
                     </div>
-                  ))}
+                    <div className="text-sm text-gray-400 mt-1">
+                      {record.fileName} • {record.recordCount} kayıt • {record.updatedCount} güncelleme
+                    </div>
+                  </div>
+                  <div className="flex items-center space-x-2">
+                    <button
+                      onClick={() => setSelectedUpload(selectedUpload?.id === record.id ? null : record)}
+                      className="p-2 text-gray-400 hover:text-white rounded-lg hover:bg-gray-700/30"
+                    >
+                      {selectedUpload?.id === record.id ? <ChevronDown className="w-5 h-5" /> : <ChevronRight className="w-5 h-5" />}
+                    </button>
+                    <button
+                      onClick={() => handleDeleteHistory(record.id)}
+                      className="p-2 text-gray-400 hover:text-red-400 rounded-lg hover:bg-gray-700/30"
+                    >
+                      <Trash2 className="w-5 h-5" />
+                    </button>
+                  </div>
                 </div>
+                {selectedUpload?.id === record.id && (
+                  <div className="border-t border-gray-800">
+                    <div className="overflow-x-auto">
+                      <table className="min-w-full divide-y divide-gray-800">
+                        <thead className="bg-[#0d1117]">
+                          <tr>
+                            <th className="px-4 py-3 text-left text-xs font-medium text-gray-400 uppercase tracking-wider">
+                              Kayıt No
+                            </th>
+                            <th className="px-4 py-3 text-left text-xs font-medium text-gray-400 uppercase tracking-wider">
+                              Cihaz No
+                            </th>
+                            <th className="px-4 py-3 text-left text-xs font-medium text-gray-400 uppercase tracking-wider">
+                              Plaka
+                            </th>
+                            <th className="px-4 py-3 text-left text-xs font-medium text-gray-400 uppercase tracking-wider">
+                              Sürücü
+                            </th>
+                            <th className="px-4 py-3 text-right text-xs font-medium text-gray-400 uppercase tracking-wider">
+                              İlk Km
+                            </th>
+                            <th className="px-4 py-3 text-left text-xs font-medium text-gray-400 uppercase tracking-wider">
+                              İlk Tarih
+                            </th>
+                            <th className="px-4 py-3 text-right text-xs font-medium text-gray-400 uppercase tracking-wider">
+                              Son Km
+                            </th>
+                            <th className="px-4 py-3 text-left text-xs font-medium text-gray-400 uppercase tracking-wider">
+                              Son Tarih
+                            </th>
+                            <th className="px-4 py-3 text-right text-xs font-medium text-gray-400 uppercase tracking-wider">
+                              Toplam Mesafe
+                            </th>
+                          </tr>
+                        </thead>
+                        <tbody className="bg-[#161b22] divide-y divide-gray-800">
+                          {record.data.map((row, index) => (
+                            <tr key={index} className="hover:bg-[#21262d]">
+                              <td className="px-4 py-2 text-sm text-gray-300">{row.kayitNo}</td>
+                              <td className="px-4 py-2 text-sm text-gray-300">{row.cihazNo}</td>
+                              <td className="px-4 py-2 text-sm text-gray-300">{row.plaka}</td>
+                              <td className="px-4 py-2 text-sm text-gray-300">{row.surucu}</td>
+                              <td className="px-4 py-2 text-sm text-right text-gray-300">
+                                {row.ilkKm?.toLocaleString('tr-TR')}
+                              </td>
+                              <td className="px-4 py-2 text-sm text-gray-300">{row.ilkTarih}</td>
+                              <td className="px-4 py-2 text-sm text-right text-gray-300">
+                                {row.sonKm?.toLocaleString('tr-TR')}
+                              </td>
+                              <td className="px-4 py-2 text-sm text-gray-300">{row.sonTarih}</td>
+                              <td className="px-4 py-2 text-sm text-right text-gray-300">
+                                {row.toplamMesafe?.toLocaleString('tr-TR')}
+                              </td>
+                            </tr>
+                          ))}
+                        </tbody>
+                      </table>
+                    </div>
+                  </div>
+                )}
               </div>
             ))}
           </div>
         </div>
-      </div>
-
-      <div className="mt-6">
-        <h2 className="text-lg font-semibold mb-3 text-white">Önemli Notlar:</h2>
-        <ul className="list-disc list-inside text-gray-400">
-          <li>Excel dosyanızda tüm gerekli sütunlar bulunmalıdır</li>
-          <li>Sistem, araçların mevcut kilometresinden düşük değerleri dikkate almaz</li>
-          <li>Son bakımdan itibaren 39.000 km'yi geçen araçlar için uyarı verilir</li>
-          <li>Tüm yükleme geçmişi ve veriler otomatik olarak kaydedilir</li>
-        </ul>
-      </div>
+      )}
     </div>
   );
 }; 
