@@ -15,7 +15,10 @@ export type ActionType =
   | 'create_user'
   | 'update_user'
   | 'delete_user'
-  | 'upload_excel';
+  | 'upload_excel'
+  | 'delete_excel'
+  | 'revert_vehicle_mileage'
+  | 'reset_all_vehicles';
 
 export interface AuditLog {
   id: string;

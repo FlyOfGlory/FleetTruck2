@@ -30,7 +30,7 @@ interface ExcelData {
   ilkTarih: string;
   sonKm: number;
   sonTarih: string;
-  toplamMesafe: number;
+  toplamMesafe: string;
 }
 
 interface UploadRecord {
@@ -46,6 +46,49 @@ interface UploadRecord {
 const VEHICLES_STORAGE_KEY = 'fleet-management-vehicles';
 const UPLOAD_HISTORY_KEY = 'excel-upload-history';
 const fileTypes = ['.xlsx', '.xls'];
+
+// Sayıyı Türkçe formatından JavaScript sayısına çevir (tr-TR kültürü)
+const parseLocalizedNumber = (value: string): number => {
+  if (!value) return 0;
+  
+  try {
+    // Metin içindeki sayısal değeri çıkart (örn: "Toplam KM: 1255,00 km" -> "1255,00")
+    const numberMatch = value.match(/\d+[,\.]?\d*/);
+    if (!numberMatch) return 0;
+    
+    const numberOnly = numberMatch[0];
+    console.log('Çıkarılan sayı:', numberOnly);
+    
+    // Türkçe kültür ayarlarına göre işle (tr-TR)
+    // 1. Binlik ayracı olan noktaları kaldır
+    const withoutThousands = numberOnly.replace(/\./g, '');
+    // 2. Virgülü noktaya çevir (JavaScript ondalık ayracı)
+    const normalized = withoutThousands.replace(',', '.');
+    // 3. Sayıya çevir
+    const parsed = parseFloat(normalized);
+    console.log('Dönüştürülen sayı:', parsed);
+    return isNaN(parsed) ? 0 : parsed;
+  } catch (error) {
+    console.error('Sayı çevirme hatası:', error);
+    return 0;
+  }
+};
+
+// JavaScript sayısını Türkçe formatına çevir (tr-TR kültürü)
+const formatLocalizedNumber = (value: number): string => {
+  if (value === 0) return '0';
+  
+  try {
+    // Türkçe kültür ayarlarına göre formatla (tr-TR)
+    // 1. Sayıyı string'e çevir ve 2 ondalık basamak kullan
+    const parts = value.toFixed(2).split('.');
+    // 2. Ondalık kısmı virgülle birleştir
+    return parts[0] + ',' + (parts[1] || '00');
+  } catch (error) {
+    console.error('Sayı formatlama hatası:', error);
+    return '0';
+  }
+};
 
 export const ExcelUpload: React.FC = () => {
   const [loading, setLoading] = useState(false);
@@ -113,9 +156,9 @@ export const ExcelUpload: React.FC = () => {
             return index >= 0 ? rowData[index] : '';
           };
 
-          const ilkKm = parseFloat(String(getColumnValue("İlk Mesafe Sayacı Değ") || '0').replace(/[^0-9.]/g, ''));
-          const sonKm = parseFloat(String(getColumnValue("Son Mesafe Sayacı De") || '0').replace(/[^0-9.]/g, ''));
-          const toplamMesafe = parseFloat(String(getColumnValue("Toplam Mesafe") || '0').replace(/[^0-9.]/g, ''));
+          // Toplam mesafe değerini direkt olarak al
+          const toplamMesafe = String(getColumnValue("Toplam Mesafe (km)") || '0');
+          console.log('Ham toplam mesafe değeri:', toplamMesafe);
 
           // Kayıt No ve Cihaz Numarası aynı sütunda
           const kayitNoCihazNo = String(getColumnValue("Kayıt No Cihaz") || '').trim().split(' ');
@@ -127,13 +170,13 @@ export const ExcelUpload: React.FC = () => {
             cihazNo: cihazNo,
             plaka: String(getColumnValue("Plaka") || '').trim(),
             surucu: String(getColumnValue("Sürücü") || '').trim(),
-            ilkKm: ilkKm,
-            ilkTarih: String(getColumnValue("İlk Mesafe Sayacı Değeri Tarihi") || '').trim(),
-            sonKm: sonKm,
-            sonTarih: String(getColumnValue("Son Mesafe Sayacı Değeri Tarihi") || '').trim(),
+            ilkKm: 0,
+            ilkTarih: String(getColumnValue("İlk Mesafe Sayacı Değeri Tarihi") || ''),
+            sonKm: 0,
+            sonTarih: String(getColumnValue("Son Mesafe Sayacı Değeri Tarihi") || ''),
             toplamMesafe: toplamMesafe
           };
-        }).filter(row => row.plaka && (row.sonKm > 0 || row.ilkKm > 0));
+        }).filter(row => row.plaka && row.toplamMesafe !== '0');
 
         console.log('Önizleme verileri:', previewRows);
         setPreviewData(previewRows);
@@ -153,32 +196,42 @@ export const ExcelUpload: React.FC = () => {
 
           if (vehicleIndex !== -1) {
             const vehicle = updatedVehicles[vehicleIndex];
-            const oldMileage = vehicle.mileage || 0;
-            const newMileage = row.sonKm || row.ilkKm;
+            const currentMileage = vehicle.mileage || '0';
             
-            if (newMileage > oldMileage) {
-              updatedVehicles[vehicleIndex] = {
-                ...vehicle,
-                mileage: newMileage,
-                lastMileageUpdate: row.sonTarih || row.ilkTarih,
-                driver: row.surucu || vehicle.driver
-              };
-              
-              updateCount++;
-
-              if (currentUser) {
-                auditLogService.createLog(
-                  currentUser,
-                  'update_vehicle',
-                  {
-                    entityId: vehicle.id,
-                    entityType: 'vehicle',
-                    description: `${vehicle.plate} plakalı aracın kilometresi güncellendi. Sürücü: ${row.surucu}`,
-                    oldValue: { mileage: oldMileage },
-                    newValue: { mileage: newMileage }
-                  }
-                );
-              }
+            // Excel'den gelen toplam mesafe değerini direkt olarak al
+            const newMileage = row.toplamMesafe;
+            console.log('Excel\'den gelen kilometre:', newMileage);
+            
+            // Mevcut kilometre ve yeni kilometre değerlerini virgüle kadar al
+            const currentMileageInt = parseInt(currentMileage.split(',')[0]) || 0;
+            const newMileageInt = parseInt(newMileage.split(',')[0]) || 0;
+            
+            // Toplam kilometreyi hesapla
+            const totalMileage = currentMileageInt + newMileageInt;
+            console.log('Toplam kilometre:', totalMileage);
+            
+            // Toplam kilometreyi string'e çevir
+            const totalMileageStr = totalMileage.toString();
+            
+            // Toplam mesafe değerini güncelle
+            updatedVehicles[vehicleIndex] = {
+              ...vehicle,
+              mileage: totalMileageStr,
+              lastMileageUpdate: new Date().toISOString(),
+              driver: row.surucu || vehicle.driver
+            };
+            
+            updateCount++;
+            
+            // Denetim kaydı oluştur
+            if (currentUser) {
+              auditLogService.createLog(currentUser, 'update_vehicle', {
+                description: `${vehicle.plate} plakalı aracın kilometresi güncellendi: ${currentMileage} -> ${totalMileageStr} km (Eklenen: ${newMileage} km)`,
+                entityType: 'vehicle',
+                entityId: vehicle.id,
+                oldValue: { mileage: currentMileage },
+                newValue: { mileage: totalMileageStr }
+              });
             }
           } else {
             unmatched.push(normalizedPlate);
@@ -337,10 +390,50 @@ export const ExcelUpload: React.FC = () => {
     cleanUploadHistory();
   }, [uploadHistory]);
 
+  // Tüm araçların kilometre bilgilerini sıfırla
+  const resetAllVehicleMileage = useCallback(() => {
+    if (!currentUser) {
+      toast.error('Bu işlem için yetkiniz yok.');
+      return;
+    }
+
+    if (!window.confirm('Tüm araçların kilometre bilgilerini sıfırlamak istediğinize emin misiniz? Bu işlem geri alınamaz.')) {
+      return;
+    }
+
+    const updatedVehicles = vehicles.map(vehicle => ({
+      ...vehicle,
+      mileage: '0',
+      lastMileageUpdate: new Date().toISOString()
+    }));
+
+    setVehicles(updatedVehicles);
+    localStorage.setItem(VEHICLES_STORAGE_KEY, JSON.stringify(updatedVehicles));
+
+    // Denetim kaydı oluştur
+    auditLogService.createLog(currentUser, 'reset_all_vehicles', {
+      description: 'Tüm araçların kilometre bilgileri sıfırlandı.',
+      entityType: 'vehicle',
+      entityId: 'all',
+      oldValue: { vehicles: vehicles.map(v => ({ id: v.id, plate: v.plate, mileage: v.mileage })) },
+      newValue: { vehicles: updatedVehicles.map(v => ({ id: v.id, plate: v.plate, mileage: v.mileage })) }
+    });
+
+    toast.success('Tüm araçların kilometre bilgileri sıfırlandı.');
+  }, [vehicles, currentUser]);
+
   return (
     <div className="p-4">
       <div className="mb-8">
-        <h1 className="text-2xl font-bold text-white mb-4">Kilometre Bilgisi Yükleme</h1>
+        <div className="flex justify-between items-center mb-4">
+          <h1 className="text-2xl font-bold text-white">Kilometre Bilgisi Yükleme</h1>
+          <button
+            onClick={resetAllVehicleMileage}
+            className="px-4 py-2 bg-red-600 text-white rounded-lg hover:bg-red-700 transition-colors"
+          >
+            Tüm Kilometreleri Sıfırla
+          </button>
+        </div>
         
         <div 
           className={`border-2 border-dashed rounded-lg p-8 text-center ${
@@ -423,15 +516,15 @@ export const ExcelUpload: React.FC = () => {
                       <td className="px-4 py-2 text-sm text-gray-300">{row.plaka}</td>
                       <td className="px-4 py-2 text-sm text-gray-300">{row.surucu}</td>
                       <td className="px-4 py-2 text-sm text-right text-gray-300">
-                        {row.ilkKm?.toLocaleString('tr-TR')}
+                        {row.ilkKm > 0 ? formatLocalizedNumber(row.ilkKm) : ''}
                       </td>
                       <td className="px-4 py-2 text-sm text-gray-300">{row.ilkTarih}</td>
                       <td className="px-4 py-2 text-sm text-right text-gray-300">
-                        {row.sonKm?.toLocaleString('tr-TR')}
+                        {row.sonKm > 0 ? formatLocalizedNumber(row.sonKm) : ''}
                       </td>
                       <td className="px-4 py-2 text-sm text-gray-300">{row.sonTarih}</td>
                       <td className="px-4 py-2 text-sm text-right text-gray-300">
-                        {row.toplamMesafe?.toLocaleString('tr-TR')}
+                        {row.toplamMesafe}
                       </td>
                     </tr>
                   ))}
@@ -533,15 +626,15 @@ export const ExcelUpload: React.FC = () => {
                               <td className="px-4 py-2 text-sm text-gray-300">{row.plaka}</td>
                               <td className="px-4 py-2 text-sm text-gray-300">{row.surucu}</td>
                               <td className="px-4 py-2 text-sm text-right text-gray-300">
-                                {row.ilkKm?.toLocaleString('tr-TR')}
+                                {row.ilkKm > 0 ? formatLocalizedNumber(row.ilkKm) : ''}
                               </td>
                               <td className="px-4 py-2 text-sm text-gray-300">{row.ilkTarih}</td>
                               <td className="px-4 py-2 text-sm text-right text-gray-300">
-                                {row.sonKm?.toLocaleString('tr-TR')}
+                                {row.sonKm > 0 ? formatLocalizedNumber(row.sonKm) : ''}
                               </td>
                               <td className="px-4 py-2 text-sm text-gray-300">{row.sonTarih}</td>
                               <td className="px-4 py-2 text-sm text-right text-gray-300">
-                                {row.toplamMesafe?.toLocaleString('tr-TR')}
+                                {row.toplamMesafe}
                               </td>
                             </tr>
                           ))}

@@ -61,8 +61,8 @@ export const VehicleTires: React.FC = () => {
     // Aracı güncelle
     const updatedVehicle = {
       ...vehicle,
-      tires: [...vehicle.tires, updatedTire],
-      updatedAt: new Date()
+      tires: [...vehicle.tires || [], updatedTire],
+      updatedAt: new Date().toISOString(),
     };
 
     // Lastik veritabanını güncelle
@@ -90,7 +90,7 @@ export const VehicleTires: React.FC = () => {
   };
 
   const handleRemoveTire = (tireId: string) => {
-    const tire = vehicle?.tires.find(t => t.id === tireId);
+    const tire = vehicle?.tires?.find(t => t.id === tireId);
     if (!vehicle || !tire) return;
 
     setSelectedTireForRemoval(tire);
@@ -113,9 +113,9 @@ export const VehicleTires: React.FC = () => {
     // Aracın lastiklerini güncelle
     const updatedVehicle = {
       ...vehicle,
-      tires: vehicle.tires.filter(t => t.id !== selectedTireForRemoval.id),
+      tires: vehicle.tires?.filter(t => t.id !== selectedTireForRemoval.id) || [],
       tireChangeCount: (vehicle.tireChangeCount || 0) + 1,
-      updatedAt: new Date()
+      updatedAt: new Date().toISOString()
     };
 
     // Lastik veritabanını güncelle
@@ -163,6 +163,9 @@ export const VehicleTires: React.FC = () => {
             {vehicle.plate} - Lastik Yönetimi
             <span className="ml-4 text-sm font-normal bg-gray-700 px-3 py-1 rounded-full">
               Toplam Değişim: {vehicle.tireChangeCount || 0} kez
+            </span>
+            <span className="ml-4 text-sm font-normal bg-gray-700 px-3 py-1 rounded-full">
+              Toplam KM: {vehicle.mileage?.toLocaleString('tr-TR') || 0} km
             </span>
           </h1>
         </div>

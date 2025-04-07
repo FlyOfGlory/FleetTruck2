@@ -80,7 +80,7 @@ export interface Vehicle {
   model: string;
   year: number;
   status: 'active' | 'inactive' | 'maintenance' | 'repair';
-  mileage?: number;
+  mileage?: string;
   lastMileageUpdate?: string;
   driver?: string;
   nextMaintenanceDate?: string;
@@ -88,6 +88,8 @@ export interface Vehicle {
   lastMaintenanceDate?: string;
   lastMaintenanceMileage?: number;
   notes?: string;
+  tires?: Tire[];
+  tireChangeCount?: number;
   createdAt: string;
   updatedAt: string;
 }

@@ -34,6 +34,7 @@ import { FrequentTireChanges } from './pages/FrequentTireChanges';
 import Attendance from './pages/Attendance';
 import TravelAllowance from './pages/TravelAllowance';
 import OvertimePage from './pages/OvertimePage';
+import DailyMileagePage from './pages/DailyMileagePage';
 
 const CURRENT_USER_KEY = 'fleet-management-current-user';
 const USERS_STORAGE_KEY = 'fleet-management-users';
@@ -218,6 +219,7 @@ const App: React.FC = () => {
                       <Route path="scrap" element={<Scrap />} />
                       <Route path="sold" element={<Sold />} />
                       <Route path="overtime" element={<OvertimePage />} />
+                      <Route path="/daily-mileage" element={<DailyMileagePage />} />
                       <Route 
                         path="users" 
                         element={

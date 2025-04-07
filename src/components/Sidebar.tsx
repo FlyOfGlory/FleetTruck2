@@ -2,6 +2,7 @@ import React from 'react';
 import { NavLink, Link } from 'react-router-dom';
 import { Truck, Disc, Wrench, Activity, Clock, Car } from 'lucide-react';
 import { useAuth } from '../contexts/AuthContext';
+import { ChartBarIcon } from '@heroicons/react/24/outline';
 
 interface SidebarProps {
   title: string;
@@ -43,6 +44,14 @@ export const Sidebar: React.FC<SidebarProps> = ({ title }) => {
               {item.name}
             </NavLink>
           ))}
+          <Link to="/overtime" className="flex items-center p-2 hover:bg-gray-700 rounded">
+            <Clock className="w-5 h-5 mr-2" />
+            Fazla Mesai
+          </Link>
+          <Link to="/daily-mileage" className="flex items-center p-2 hover:bg-gray-700 rounded">
+            <ChartBarIcon className="w-5 h-5 mr-2" />
+            Günlük Kilometre
+          </Link>
         </nav>
       </div>
     </div>
